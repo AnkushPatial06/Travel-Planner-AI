@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+streamlit
+pydantic
+python-dotenv
+google-search-results
+crewai
+groq

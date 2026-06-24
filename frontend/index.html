@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Booking.ai — AI-Powered Travel Planner</title>
+    <meta name="description" content="Search real-time flights and hotels, get AI-powered travel recommendations, and track your trip budget live.">
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <!-- Marked.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- TOP NAV BAR                                                 -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <header class="topnav" id="topnav">
+        <div class="topnav-inner">
+            <a class="brand" href="/">
+                <span class="brand-icon"><i class="fa-solid fa-globe"></i></span>
+                <span class="brand-name">Booking<span class="brand-dot">.ai</span></span>
+            </a>
+            <nav class="nav-pills">
+                <a href="#" class="nav-pill active"><i class="fa-solid fa-bed"></i> Stays</a>
+                <a href="#" class="nav-pill"><i class="fa-solid fa-plane"></i> Flights</a>
+                <a href="#" class="nav-pill"><i class="fa-solid fa-route"></i> AI Itinerary</a>
+                <span class="ai-badge"><i class="fa-solid fa-wand-magic-sparkles"></i> Agentic AI v2</span>
+            </nav>
+        </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- HERO BANNER                                                 -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <section class="hero" id="hero">
+        <div class="hero-bg-art"></div>
+        <div class="hero-content">
+            <div class="hero-text-block">
+                <p class="hero-eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> AI-Powered Travel Planning</p>
+                <h1 class="hero-title">Find your next<br><span class="hero-highlight">perfect journey</span></h1>
+                <p class="hero-subtitle">Real-time flights &amp; hotels · AI recommendations · Live budget tracking</p>
+            </div>
+
+            <!-- ─── Search Form ─── -->
+            <form id="search-form" class="search-card" autocomplete="off">
+                <div class="search-grid">
+
+                    <div class="search-field" id="field-origin">
+                        <label for="origin"><i class="fa-solid fa-plane-departure"></i> From</label>
+                        <input type="text" id="origin" placeholder="e.g. BLR" maxlength="3" required value="BLR">
+                        <span class="field-hint">IATA airport code</span>
+                    </div>
+
+                    <button type="button" class="swap-btn" id="swap-airports" title="Swap airports">
+                        <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                    </button>
+
+                    <div class="search-field" id="field-destination">
+                        <label for="destination"><i class="fa-solid fa-plane-arrival"></i> To</label>
+                        <input type="text" id="destination" placeholder="e.g. DEL" maxlength="3" required value="DEL">
+                        <span class="field-hint">IATA airport code</span>
+                    </div>
+
+                    <div class="search-field" id="field-outbound">
+                        <label for="outbound-date"><i class="fa-regular fa-calendar"></i> Depart</label>
+                        <input type="date" id="outbound-date" required>
+                    </div>
+
+                    <div class="search-field" id="field-return">
+                        <label for="return-date"><i class="fa-regular fa-calendar-check"></i> Return</label>
+                        <input type="date" id="return-date" required>
+                    </div>
+
+                    <div class="search-field" id="field-budget">
+                        <label for="budget"><i class="fa-solid fa-indian-rupee-sign"></i> Budget</label>
+                        <input type="number" id="budget" placeholder="50000" value="50000" min="1000">
+                        <span class="field-hint">Total trip budget (INR)</span>
+                    </div>
+
+                    <button type="submit" class="search-btn" id="search-btn">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <span>Search</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- MAIN CONTENT                                                -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <main class="main-wrap" id="main-wrap">
+
+        <!-- Loading Overlay -->
+        <div id="loading" class="loading-overlay hidden">
+            <div class="loading-box">
+                <div class="loading-orb"></div>
+                <div class="loading-ring"></div>
+                <h3 class="loading-title">Searching live results…</h3>
+                <p class="loading-sub">AI agents analyzing flights &amp; hotels</p>
+                <div class="loading-steps">
+                    <div class="lstep active" id="lstep-flights"><i class="fa-solid fa-plane"></i> Fetching flights</div>
+                    <div class="lstep" id="lstep-hotels"><i class="fa-solid fa-hotel"></i> Fetching hotels</div>
+                    <div class="lstep" id="lstep-ai"><i class="fa-solid fa-robot"></i> AI recommendations</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Welcome State -->
+        <div id="welcome-screen" class="welcome-state">
+            <div class="welcome-card">
+                <div class="welcome-icon-ring">
+                    <i class="fa-solid fa-globe-asia-australia"></i>
+                </div>
+                <h2>Ready for your next adventure?</h2>
+                <p>Enter your departure and destination airports above, pick your dates, set a budget, and let our AI agents do the rest.</p>
+                <div class="welcome-features">
+                    <div class="wf-item"><i class="fa-solid fa-bolt-lightning"></i> Real-time data</div>
+                    <div class="wf-item"><i class="fa-solid fa-robot"></i> AI powered</div>
+                    <div class="wf-item"><i class="fa-solid fa-wallet"></i> Budget tracking</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Layout -->
+        <div id="results-section" class="results-layout hidden">
+
+            <!-- ─── Trip Header ─── -->
+            <div class="trip-header">
+                <div class="trip-header-left">
+                    <div class="trip-route">
+                        <span id="trip-header-origin" class="route-code">BLR</span>
+                        <span class="route-arrow"><i class="fa-solid fa-arrow-right-long"></i></span>
+                        <span id="trip-header-dest" class="route-code">DEL</span>
+                    </div>
+                    <div id="trip-header-dates" class="trip-dates"></div>
+                </div>
+                <div class="trip-header-right">
+                    <button class="new-search-btn" id="new-search-btn">
+                        <i class="fa-solid fa-magnifying-glass"></i> New Search
+                    </button>
+                </div>
+            </div>
+
+            <!-- ─── Results Body ─── -->
+            <div class="results-body">
+
+                <!-- Tab Navigation -->
+                <div class="tabs-nav">
+                    <button class="tab-btn active" data-tab="tab-stays">
+                        <i class="fa-solid fa-bed"></i> Stays
+                        <span class="tab-count" id="stays-count">0</span>
+                    </button>
+                    <button class="tab-btn" data-tab="tab-flights">
+                        <i class="fa-solid fa-plane"></i> Flights
+                        <span class="tab-count" id="flights-count">0</span>
+                    </button>
+                    <button class="tab-btn" data-tab="tab-ai">
+                        <i class="fa-solid fa-robot"></i> AI Analysis
+                    </button>
+                    <button class="tab-btn" data-tab="tab-itinerary">
+                        <i class="fa-solid fa-calendar-day"></i> Itinerary
+                    </button>
+                </div>
+
+                <!-- Tab Panels -->
+                <div class="tabs-body">
+
+                    <!-- STAYS TAB -->
+                    <div id="tab-stays" class="tab-panel active">
+                        <div class="panel-sort-bar">
+                            <span class="sort-label">Sort by:</span>
+                            <button class="sort-btn active" data-sort="rating">Top Rated</button>
+                            <button class="sort-btn" data-sort="price-asc">Price ↑</button>
+                            <button class="sort-btn" data-sort="price-desc">Price ↓</button>
+                        </div>
+                        <div class="cards-list" id="stays-list"></div>
+                    </div>
+
+                    <!-- FLIGHTS TAB -->
+                    <div id="tab-flights" class="tab-panel">
+                        <div class="panel-sort-bar">
+                            <span class="sort-label">Sort by:</span>
+                            <button class="sort-btn active" data-sort="price-asc">Cheapest</button>
+                            <button class="sort-btn" data-sort="duration">Duration</button>
+                        </div>
+                        <div class="cards-list" id="flights-list"></div>
+                    </div>
+
+                    <!-- AI ANALYSIS TAB -->
+                    <div id="tab-ai" class="tab-panel">
+                        <div class="ai-grid">
+                            <div class="ai-box">
+                                <div class="ai-box-header">
+                                    <div class="ai-box-icon flights"><i class="fa-solid fa-plane"></i></div>
+                                    <div>
+                                        <h3>Flight Intelligence</h3>
+                                        <p>AI-powered analysis of all available flights</p>
+                                    </div>
+                                </div>
+                                <div class="ai-box-body markdown-content" id="flight-ai-content">
+                                    <div class="ai-placeholder"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading analysis…</div>
+                                </div>
+                            </div>
+                            <div class="ai-box">
+                                <div class="ai-box-header">
+                                    <div class="ai-box-icon hotels"><i class="fa-solid fa-hotel"></i></div>
+                                    <div>
+                                        <h3>Hotel Intelligence</h3>
+                                        <p>AI-powered ranking of all available stays</p>
+                                    </div>
+                                </div>
+                                <div class="ai-box-body markdown-content" id="hotel-ai-content">
+                                    <div class="ai-placeholder"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading analysis…</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ITINERARY TAB -->
+                    <div id="tab-itinerary" class="tab-panel">
+                        <div class="itinerary-wrap">
+                            <div class="itinerary-toolbar">
+                                <div class="itinerary-toolbar-left">
+                                    <i class="fa-solid fa-map-location-dot"></i>
+                                    <div>
+                                        <h3>Day-by-Day Itinerary</h3>
+                                        <p>AI-crafted personalized travel plan</p>
+                                    </div>
+                                </div>
+                                <button class="dl-btn" id="btn-download-itinerary">
+                                    <i class="fa-solid fa-download"></i> Download
+                                </button>
+                            </div>
+                            <div class="itinerary-body markdown-content" id="itinerary-content"></div>
+                        </div>
+                    </div>
+
+                </div><!-- end tabs-body -->
+            </div><!-- end results-body -->
+        </div><!-- end results-layout -->
+
+        <!-- ─── Budget Tracker Sidebar ─── -->
+        <aside class="budget-sidebar" id="budget-sidebar">
+            <div class="budget-card">
+                <div class="bc-header">
+                    <i class="fa-solid fa-chart-pie"></i>
+                    <h3>Trip Budget</h3>
+                </div>
+
+                <div class="bc-donut-wrap">
+                    <svg class="bc-donut" viewBox="0 0 120 120">
+                        <circle class="donut-bg" cx="60" cy="60" r="50" fill="none" stroke-width="14"/>
+                        <circle class="donut-fill" id="donut-fill" cx="60" cy="60" r="50" fill="none" stroke-width="14"
+                                stroke-dasharray="0 314" stroke-dashoffset="78.5"/>
+                    </svg>
+                    <div class="donut-center">
+                        <span class="donut-pct" id="donut-pct">0%</span>
+                        <span class="donut-label">used</span>
+                    </div>
+                </div>
+
+                <div class="bc-rows">
+                    <div class="bc-row">
+                        <span class="bc-key"><span class="bc-dot total"></span> Total Budget</span>
+                        <strong id="display-total-budget">₹50,000</strong>
+                    </div>
+                    <div class="bc-row">
+                        <span class="bc-key"><span class="bc-dot spent"></span> Selected Spend</span>
+                        <strong id="display-total-spent">₹0</strong>
+                    </div>
+                    <div class="bc-row">
+                        <span class="bc-key"><span class="bc-dot remaining"></span> Remaining</span>
+                        <strong id="display-remaining">₹50,000</strong>
+                    </div>
+                </div>
+
+                <!-- Progress bar -->
+                <div class="bc-progress-wrap">
+                    <div class="bc-progress-track">
+                        <div class="bc-progress-fill" id="budget-progress" style="width:0%"></div>
+                    </div>
+                </div>
+
+                <div class="bc-status" id="budget-status">
+                    <i class="fa-solid fa-circle-info"></i> Select a flight &amp; hotel to track spend
+                </div>
+
+                <!-- Breakdown -->
+                <div class="bc-breakdown">
+                    <h4>Cost Breakdown</h4>
+                    <div class="bcb-item">
+                        <span><i class="fa-solid fa-plane"></i> Flight</span>
+                        <span id="breakdown-flight">₹0</span>
+                    </div>
+                    <div class="bcb-item">
+                        <span><i class="fa-solid fa-hotel"></i> Hotel (total stay)</span>
+                        <span id="breakdown-stay">₹0</span>
+                    </div>
+                </div>
+
+                <!-- Selected Summary -->
+                <div class="bc-selected" id="bc-selected">
+                    <h4>Your Selections</h4>
+                    <div class="bc-sel-item" id="bc-sel-flight">
+                        <i class="fa-regular fa-circle"></i> No flight selected
+                    </div>
+                    <div class="bc-sel-item" id="bc-sel-hotel">
+                        <i class="fa-regular fa-circle"></i> No hotel selected
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+    </main>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- AI TRAVEL ASSISTANT CHAT WIDGET                             -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+
+    <!-- Floating Toggle Button -->
+    <button class="chat-fab" id="chat-fab" title="AI Travel Assistant">
+        <i class="fa-solid fa-comments" id="chat-fab-icon"></i>
+        <span class="chat-fab-badge" id="chat-fab-badge"></span>
+    </button>
+
+    <!-- Chat Panel -->
+    <div class="chat-panel hidden" id="chat-panel">
+        <div class="chat-header">
+            <div class="chat-header-left">
+                <div class="chat-avatar"><i class="fa-solid fa-plane-circle-check"></i></div>
+                <div>
+                    <h4>Travel Assistant</h4>
+                    <span class="chat-status" id="chat-status">Online · Context-Aware</span>
+                </div>
+            </div>
+            <div class="chat-header-right">
+                <button class="chat-clear-btn" id="chat-clear" title="Clear chat"><i class="fa-solid fa-broom"></i></button>
+                <button class="chat-close-btn" id="chat-close" title="Close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+        </div>
+
+        <!-- Messages -->
+        <div class="chat-messages" id="chat-messages">
+            <div class="chat-msg assistant">
+                <div class="chat-msg-avatar"><i class="fa-solid fa-plane-circle-check"></i></div>
+                <div class="chat-msg-bubble">
+                    <p>Welcome! I'm your AI Travel Assistant. 🌍</p>
+                    <p>I have full access to your current trip — flights, hotels, budget, and itinerary. Ask me anything travel-related!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Suggestions -->
+        <div class="chat-suggestions" id="chat-suggestions">
+            <button class="chat-chip" data-msg="Is my budget sufficient?">💰 Budget check</button>
+            <button class="chat-chip" data-msg="What's the weather like at my destination?">🌤️ Weather</button>
+            <button class="chat-chip" data-msg="Suggest cheaper alternatives">💡 Cheaper options</button>
+            <button class="chat-chip" data-msg="What should I pack?">🧳 Packing tips</button>
+            <button class="chat-chip" data-msg="Is my destination safe to travel?">🛡️ Safety info</button>
+            <button class="chat-chip" data-msg="What are the best local foods?">🍜 Local food</button>
+        </div>
+
+        <!-- Input -->
+        <form class="chat-input-form" id="chat-input-form">
+            <input type="text" class="chat-input" id="chat-input" placeholder="Ask about your trip..." autocomplete="off">
+            <button type="submit" class="chat-send-btn" id="chat-send-btn">
+                <i class="fa-solid fa-paper-plane"></i>
+            </button>
+        </form>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- FOOTER                                                      -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <footer class="footer">
+        <div class="footer-inner">
+            <div class="footer-brand">
+                <span class="brand-icon"><i class="fa-solid fa-globe"></i></span>
+                <span>Booking<span class="brand-dot">.ai</span></span>
+            </div>
+            <p class="footer-copy">Powered by FastAPI · SerpAPI · CrewAI · Groq Llama 3.3 · &copy; 2026</p>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
