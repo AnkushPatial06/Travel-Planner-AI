@@ -5,9 +5,9 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
-from config import logger
+from backend.config import logger
 
-from models import (
+from backend.models import (
     FlightRequest,
     HotelRequest,
     ItineraryRequest,
@@ -16,13 +16,13 @@ from models import (
     ChatResponse,
 )
 
-from search_service import (
+from backend.search_service import (
     search_flights,
     search_hotels,
     format_travel_data,
 )
 
-from ai_service import (
+from backend.ai_service import (
     get_ai_recommendation,
     generate_itinerary,
     get_chat_response,

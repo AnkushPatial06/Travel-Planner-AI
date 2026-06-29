@@ -2,8 +2,8 @@ import asyncio
 from fastapi import HTTPException
 from serpapi import GoogleSearch
 
-from config import settings, logger
-from models import FlightInfo, FlightRequest, HotelInfo, HotelRequest
+from backend.config import settings, logger
+from backend.models import FlightInfo, FlightRequest, HotelInfo, HotelRequest
 
 # =====================================================================
 # IATA RESOLVER & STABLE IMAGE PROVIDER

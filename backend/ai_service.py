@@ -8,7 +8,7 @@ _crewai_cache.mark_cache_breakpoint = lambda msg: msg
 import litellm
 from crewai import Agent, Crew, Process, Task, LLM
 
-from config import settings, logger
+from backend.config import settings, logger
 
 
 # =====================================================================
