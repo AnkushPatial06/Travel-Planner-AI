@@ -34,12 +34,8 @@ app = FastAPI(title="Travel Planning API", version="1.2.0")
 # Add CORS configuration for Railway deployment
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://travel-planner-ai-production-f4c4.up.railway.app",
-        "http://localhost:3000",
-        "http://localhost:8000",
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
