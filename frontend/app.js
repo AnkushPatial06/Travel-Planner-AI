@@ -2,6 +2,9 @@
    BOOKING.AI — APP LOGIC
    ============================================================ */
 
+// ── Backend Configuration ──────────────────────────────────
+const BACKEND_URL = 'https://travel-planner-ai-production-f4c4.up.railway.app';
+
 // ── State ──────────────────────────────────────────────────
 let currentTripData = null;
 let selectedFlight    = null;
@@ -148,7 +151,7 @@ searchForm.addEventListener('submit', async (e) => {
     animateLoadingSteps();
 
     try {
-        const res = await fetch('/complete_search/', {
+        const res = await fetch(BACKEND_URL + '/complete_search/', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({
@@ -747,7 +750,7 @@ async function sendChatMessage(msg) {
     const typingEl = showTypingIndicator();
 
     try {
-        const res = await fetch('/chat/', {
+        const res = await fetch(BACKEND_URL + '/chat/', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({
