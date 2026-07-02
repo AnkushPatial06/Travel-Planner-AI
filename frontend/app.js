@@ -3,7 +3,12 @@
    ============================================================ */
 
 // ── Backend Configuration ──────────────────────────────────
-const BACKEND_URL = 'https://travel-planner-ai-production-f4c4.up.railway.app';
+// Auto-detect backend: use empty string (relative) when running locally,
+// so API calls go to the same server that serves the frontend.
+const BACKEND_URL = (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1'
+) ? '' : 'https://travel-planner-ai-production-f4c4.up.railway.app';
 
 // ── State ──────────────────────────────────────────────────
 let currentTripData = null;

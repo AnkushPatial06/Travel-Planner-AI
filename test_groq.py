@@ -1,8 +1,13 @@
+import os
+from dotenv import load_dotenv
 from crewai import LLM
 
+load_dotenv()
+
 llm = LLM(
-    model="groq/llama-3.3-70b-versatile",
-    api_key="YOUR_GROQ_KEY"
+    model=os.getenv("GROQ_MODEL", "groq/llama-3.3-70b-versatile"),
+    api_key=os.getenv("GROQ_API_KEY")
 )
 
-print(llm)
+print("LLM initialized successfully:")
+print(llm)
