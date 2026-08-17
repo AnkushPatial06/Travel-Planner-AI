@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Booking.ai — AI-Powered Travel Planner</title>
-    <meta name="description" content="Search real-time flights and hotels, get AI-powered travel recommendations, and track your trip budget live.">
+    <meta name="description" content="Search real-time flights and hotels, get AI-powered travel recommendations, weather intelligence, budget analysis, and live travel scores.">
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
     <!-- Icons -->
@@ -42,7 +42,7 @@
             <div class="hero-text-block">
                 <p class="hero-eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> AI-Powered Travel Planning</p>
                 <h1 class="hero-title">Find your next<br><span class="hero-highlight">perfect journey</span></h1>
-                <p class="hero-subtitle">Real-time flights &amp; hotels · AI recommendations · Live budget tracking</p>
+                <p class="hero-subtitle">Real-time flights &amp; hotels · Weather Intelligence · Budget Analysis · AI Travel Score</p>
             </div>
 
             <!-- ─── Search Form ─── -->
@@ -100,11 +100,13 @@
             <div class="loading-box">
                 <div class="loading-orb"></div>
                 <div class="loading-ring"></div>
-                <h3 class="loading-title">Searching live results…</h3>
-                <p class="loading-sub">AI agents analyzing flights &amp; hotels</p>
+                <h3 class="loading-title">Agents searching live results…</h3>
+                <p class="loading-sub">Multi-agent AI analyzing your trip</p>
                 <div class="loading-steps">
                     <div class="lstep active" id="lstep-flights"><i class="fa-solid fa-plane"></i> Fetching flights</div>
                     <div class="lstep" id="lstep-hotels"><i class="fa-solid fa-hotel"></i> Fetching hotels</div>
+                    <div class="lstep" id="lstep-weather"><i class="fa-solid fa-cloud-sun"></i> Analyzing weather</div>
+                    <div class="lstep" id="lstep-budget"><i class="fa-solid fa-wallet"></i> Budget analysis</div>
                     <div class="lstep" id="lstep-ai"><i class="fa-solid fa-robot"></i> AI recommendations</div>
                 </div>
             </div>
@@ -121,7 +123,9 @@
                 <div class="welcome-features">
                     <div class="wf-item"><i class="fa-solid fa-bolt-lightning"></i> Real-time data</div>
                     <div class="wf-item"><i class="fa-solid fa-robot"></i> AI powered</div>
+                    <div class="wf-item"><i class="fa-solid fa-cloud-sun-rain"></i> Weather intel</div>
                     <div class="wf-item"><i class="fa-solid fa-wallet"></i> Budget tracking</div>
+                    <div class="wf-item"><i class="fa-solid fa-star"></i> Travel score</div>
                 </div>
             </div>
         </div>
@@ -140,6 +144,13 @@
                     <div id="trip-header-dates" class="trip-dates"></div>
                 </div>
                 <div class="trip-header-right">
+                    <!-- Travel Score Badge -->
+                    <div class="score-badge-wrap" id="score-badge-wrap" style="display:none">
+                        <div class="score-badge" id="score-badge-mini">
+                            <span class="score-badge-val" id="score-badge-val">--</span>
+                            <span class="score-badge-label">Score</span>
+                        </div>
+                    </div>
                     <button class="new-search-btn" id="new-search-btn">
                         <i class="fa-solid fa-magnifying-glass"></i> New Search
                     </button>
@@ -158,6 +169,15 @@
                     <button class="tab-btn" data-tab="tab-flights">
                         <i class="fa-solid fa-plane"></i> Flights
                         <span class="tab-count" id="flights-count">0</span>
+                    </button>
+                    <button class="tab-btn" data-tab="tab-weather">
+                        <i class="fa-solid fa-cloud-sun-rain"></i> Weather
+                    </button>
+                    <button class="tab-btn" data-tab="tab-budget">
+                        <i class="fa-solid fa-chart-pie"></i> Budget
+                    </button>
+                    <button class="tab-btn" data-tab="tab-score">
+                        <i class="fa-solid fa-star"></i> Travel Score
                     </button>
                     <button class="tab-btn" data-tab="tab-ai">
                         <i class="fa-solid fa-robot"></i> AI Analysis
@@ -189,6 +209,27 @@
                             <button class="sort-btn" data-sort="duration">Duration</button>
                         </div>
                         <div class="cards-list" id="flights-list"></div>
+                    </div>
+
+                    <!-- WEATHER INTELLIGENCE TAB -->
+                    <div id="tab-weather" class="tab-panel">
+                        <div class="weather-wrap" id="weather-wrap">
+                            <div class="ai-placeholder"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading weather intelligence…</div>
+                        </div>
+                    </div>
+
+                    <!-- BUDGET ANALYSIS TAB -->
+                    <div id="tab-budget" class="tab-panel">
+                        <div class="budget-analysis-wrap" id="budget-analysis-wrap">
+                            <div class="ai-placeholder"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading budget analysis…</div>
+                        </div>
+                    </div>
+
+                    <!-- TRAVEL SCORE TAB -->
+                    <div id="tab-score" class="tab-panel">
+                        <div class="score-wrap" id="score-wrap">
+                            <div class="ai-placeholder"><i class="fa-solid fa-circle-notch fa-spin"></i> Computing travel score…</div>
+                        </div>
                     </div>
 
                     <!-- AI ANALYSIS TAB -->
@@ -350,7 +391,7 @@
                 <div class="chat-msg-avatar"><i class="fa-solid fa-plane-circle-check"></i></div>
                 <div class="chat-msg-bubble">
                     <p>Welcome! I'm your AI Travel Assistant. 🌍</p>
-                    <p>I have full access to your current trip — flights, hotels, budget, and itinerary. Ask me anything travel-related!</p>
+                    <p>I have full access to your current trip — flights, hotels, weather intel, budget analysis, and itinerary. Ask me anything travel-related!</p>
                 </div>
             </div>
         </div>
@@ -383,7 +424,7 @@
                 <span class="brand-icon"><i class="fa-solid fa-globe"></i></span>
                 <span>Booking<span class="brand-dot">.ai</span></span>
             </div>
-            <p class="footer-copy">Powered by FastAPI · SerpAPI · CrewAI · Groq Llama 3.3 · &copy; 2026</p>
+            <p class="footer-copy">Powered by FastAPI · Open-Meteo · CrewAI · Groq Llama 3.3 · &copy; 2026</p>
         </div>
     </footer>
 

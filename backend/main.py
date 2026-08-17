@@ -9,12 +9,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.config import logger
 
 from backend.models import (
+    AIResponse,
+    BudgetRequest,
+    ChatRequest,
+    ChatResponse,
     FlightRequest,
     HotelRequest,
     ItineraryRequest,
-    AIResponse,
-    ChatRequest,
-    ChatResponse,
+    TravelScore,
+    WeatherAnalysis,
+    WeatherRequest,
 )
 
 from backend.search_service import (
@@ -23,13 +27,20 @@ from backend.search_service import (
     format_travel_data,
 )
 
+from backend.weather_service import fetch_weather_analysis
+
+from backend.budget_service import analyze_budget
+
 from backend.ai_service import (
     get_ai_recommendation,
     generate_itinerary,
     get_chat_response,
+    analyze_weather_with_ai,
+    analyze_budget_with_ai,
+    generate_travel_score,
 )
 
-app = FastAPI(title="Travel Planning API", version="1.2.0")
+app = FastAPI(title="Travel Planning API", version="2.0.0")
 
 # Add CORS configuration for Railway deployment
 app.add_middleware(
@@ -41,11 +52,13 @@ app.add_middleware(
 )
 
 
+# ── Health ─────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "Travel Planning API"}
+    return {"status": "ok", "service": "Travel Planning API", "version": "2.0.0"}
 
 
+# ── Flights ────────────────────────────────────────────────────────────
 @app.post("/search_flights/", response_model=AIResponse)
 async def get_flight_recommendations(flight_request: FlightRequest):
     try:
@@ -58,7 +71,7 @@ async def get_flight_recommendations(flight_request: FlightRequest):
 
         flights_text = format_travel_data("flights", flights)
 
-        # AI recommendation is non-critical — always return flight data even if AI fails
+        # AI recommendation is non-critical
         try:
             recommendation = await get_ai_recommendation("flights", flights_text)
         except Exception as ai_exc:
@@ -73,6 +86,7 @@ async def get_flight_recommendations(flight_request: FlightRequest):
         raise HTTPException(status_code=500, detail=f"Flight search error: {exc}") from exc
 
 
+# ── Hotels ─────────────────────────────────────────────────────────────
 @app.post("/search_hotels/", response_model=AIResponse)
 async def get_hotel_recommendations(hotel_request: HotelRequest):
     try:
@@ -85,7 +99,6 @@ async def get_hotel_recommendations(hotel_request: HotelRequest):
 
         hotels_text = format_travel_data("hotels", hotels)
 
-        # AI recommendation is non-critical — always return hotel data even if AI fails
         try:
             recommendation = await get_ai_recommendation("hotels", hotels_text)
         except Exception as ai_exc:
@@ -100,11 +113,85 @@ async def get_hotel_recommendations(hotel_request: HotelRequest):
         raise HTTPException(status_code=500, detail=f"Hotel search error: {exc}") from exc
 
 
+# ── Weather Intelligence ───────────────────────────────────────────────
+@app.post("/search_weather/", response_model=WeatherAnalysis)
+async def get_weather_intelligence(weather_request: WeatherRequest):
+    """
+    Fetch real-time weather data for the destination, detect risks,
+    and generate AI-powered travel recommendations.
+    """
+    try:
+        # 1. Fetch and process raw weather data
+        weather = await fetch_weather_analysis(weather_request)
+
+        # 2. AI narrative analysis (non-critical)
+        try:
+            ai_text = await analyze_weather_with_ai(
+                destination=weather_request.destination,
+                weather=weather,
+                start_date=weather_request.start_date,
+                end_date=weather_request.end_date,
+            )
+            weather.ai_weather_summary = ai_text
+            weather.travel_recommendation = ai_text  # Same text, structured inside
+        except Exception as ai_exc:
+            logger.error("AI weather analysis failed (non-fatal): %s", ai_exc)
+            weather.ai_weather_summary = (
+                f"Weather for {weather_request.destination}: {weather.overall_condition}. "
+                f"Temperature range: {weather.temperature_range}. "
+                f"Risk level: {weather.risk_level}."
+            )
+
+        return weather
+    except Exception as exc:
+        logger.exception("Weather search endpoint error")
+        raise HTTPException(status_code=500, detail=f"Weather search error: {exc}") from exc
+
+
+# ── Budget Analysis ────────────────────────────────────────────────────
+@app.post("/analyze_budget/")
+async def get_budget_analysis(budget_request: BudgetRequest):
+    """
+    Analyze trip budget against actual flight/hotel prices.
+    Returns structured cost breakdown and AI optimization advice.
+    """
+    try:
+        # 1. Compute budget breakdown
+        budget_analysis = analyze_budget(budget_request)
+
+        # 2. AI narrative (non-critical)
+        try:
+            ai_text = await analyze_budget_with_ai(
+                budget_analysis=budget_analysis,
+                destination=budget_request.destination,
+                trip_nights=budget_request.trip_nights,
+            )
+            budget_analysis.ai_budget_analysis = ai_text
+        except Exception as ai_exc:
+            logger.error("AI budget analysis failed (non-fatal): %s", ai_exc)
+            budget_analysis.ai_budget_analysis = (
+                f"Budget status: {budget_analysis.budget_status}. "
+                f"Estimated cost: ₹{budget_analysis.estimated_total_cost:,.0f} "
+                f"vs budget: ₹{budget_analysis.user_budget:,.0f}."
+            )
+
+        return budget_analysis
+    except Exception as exc:
+        logger.exception("Budget analysis endpoint error")
+        raise HTTPException(status_code=500, detail=f"Budget analysis error: {exc}") from exc
+
+
+# ── Complete Search (all agents in parallel) ───────────────────────────
 @app.post("/complete_search/", response_model=AIResponse)
 async def complete_travel_search(
     flight_request: FlightRequest,
     hotel_request: Optional[HotelRequest] = None,
 ):
+    """
+    Master search endpoint — runs flights, hotels, weather, and budget
+    analysis in parallel and returns a unified response.
+    Weather and budget are non-critical: failures return empty values.
+    """
     try:
         if hotel_request is None:
             hotel_request = HotelRequest(
@@ -113,53 +200,139 @@ async def complete_travel_search(
                 check_out_date=flight_request.return_date,
             )
 
-        flight_task = asyncio.create_task(get_flight_recommendations(flight_request))
-        hotel_task = asyncio.create_task(get_hotel_recommendations(hotel_request))
-        flight_results, hotel_results = await asyncio.gather(
-            flight_task,
-            hotel_task,
-            return_exceptions=True,
+        # ── Parallel Phase 1: Flights + Hotels ─────────────────────
+        flight_task = asyncio.create_task(_safe_flight_search(flight_request))
+        hotel_task  = asyncio.create_task(_safe_hotel_search(hotel_request))
+        flights, hotels = await asyncio.gather(flight_task, hotel_task)
+
+        # ── Parallel Phase 2: AI Recs + Weather + Budget ───────────
+        flights_text = format_travel_data("flights", flights)
+        hotels_text  = format_travel_data("hotels",  hotels)
+
+        # Compute trip nights
+        from datetime import datetime as _dt
+        try:
+            nights = max(
+                (_dt.strptime(flight_request.return_date, "%Y-%m-%d") -
+                 _dt.strptime(flight_request.outbound_date, "%Y-%m-%d")).days,
+                1
+            )
+        except Exception:
+            nights = 3
+
+        weather_req = WeatherRequest(
+            destination=flight_request.destination,
+            start_date=flight_request.outbound_date,
+            end_date=flight_request.return_date,
         )
 
-        if isinstance(flight_results, Exception):
-            logger.error("Flight search failed: %s", flight_results)
-            flight_results = AIResponse(
-                flights=[],
-                ai_flight_recommendation="Could not retrieve flights.",
-            )
+        ai_flight_task   = asyncio.create_task(_safe_ai_rec("flights", flights_text))
+        ai_hotel_task    = asyncio.create_task(_safe_ai_rec("hotels",  hotels_text))
+        weather_task     = asyncio.create_task(_safe_weather(weather_req))
 
-        if isinstance(hotel_results, Exception):
-            logger.error("Hotel search failed: %s", hotel_results)
-            hotel_results = AIResponse(
-                hotels=[],
-                ai_hotel_recommendation="Could not retrieve hotels.",
-            )
+        ai_flight_rec, ai_hotel_rec, weather = await asyncio.gather(
+            ai_flight_task, ai_hotel_task, weather_task
+        )
 
-        flights_text = format_travel_data("flights", flight_results.flights)
-        hotels_text = format_travel_data("hotels", hotel_results.hotels)
+        # ── Weather AI narrative ────────────────────────────────────
+        if weather:
+            try:
+                ai_wx = await analyze_weather_with_ai(
+                    destination=flight_request.destination,
+                    weather=weather,
+                    start_date=flight_request.outbound_date,
+                    end_date=flight_request.return_date,
+                )
+                weather.ai_weather_summary    = ai_wx
+                weather.travel_recommendation = ai_wx
+            except Exception as exc:
+                logger.warning("AI weather narrative failed (non-fatal): %s", exc)
 
+        # ── Budget Analysis ─────────────────────────────────────────
+        budget_analysis = None
+        if flight_request.budget and flight_request.budget > 0:
+            try:
+                budget_req = BudgetRequest(
+                    user_budget=flight_request.budget,
+                    destination=flight_request.destination,
+                    trip_nights=nights,
+                    flights=[f.model_dump() for f in flights],
+                    hotels=[h.model_dump() for h in hotels],
+                )
+                budget_analysis = analyze_budget(budget_req)
+                try:
+                    ai_bd = await analyze_budget_with_ai(
+                        budget_analysis=budget_analysis,
+                        destination=flight_request.destination,
+                        trip_nights=nights,
+                    )
+                    budget_analysis.ai_budget_analysis = ai_bd
+                except Exception as exc:
+                    logger.warning("AI budget narrative failed (non-fatal): %s", exc)
+            except Exception as exc:
+                logger.warning("Budget analysis failed (non-fatal): %s", exc)
+
+        # ── Itinerary ───────────────────────────────────────────────
         itinerary = ""
-        if flight_results.flights and hotel_results.hotels:
-            itinerary = await generate_itinerary(
-                destination=flight_request.destination,
-                flights_text=flights_text,
-                hotels_text=hotels_text,
-                check_in_date=flight_request.outbound_date,
-                check_out_date=flight_request.return_date,
+        if flights and hotels:
+            weather_summary = (
+                f"Risk: {weather.risk_level}. {weather.overall_condition}. "
+                f"Temp range: {weather.temperature_range}."
+                if weather else ""
             )
+            try:
+                itinerary = await generate_itinerary(
+                    destination=flight_request.destination,
+                    flights_text=flights_text,
+                    hotels_text=hotels_text,
+                    check_in_date=flight_request.outbound_date,
+                    check_out_date=flight_request.return_date,
+                    weather_summary=weather_summary,
+                    budget=flight_request.budget,
+                )
+            except Exception as exc:
+                logger.warning("Itinerary generation failed (non-fatal): %s", exc)
+
+        # ── Travel Score ────────────────────────────────────────────
+        travel_score = None
+        try:
+            travel_score = await generate_travel_score(
+                destination=flight_request.destination,
+                flights=flights,
+                hotels=hotels,
+                weather=weather,
+                budget=budget_analysis,
+            )
+        except Exception as exc:
+            logger.warning("Travel score failed (non-fatal): %s", exc)
+
+        # ── Log final response shape for debugging ─────────────────
+        logger.info(
+            "complete_search response: flights=%d hotels=%d weather=%s budget=%s score=%s",
+            len(flights),
+            len(hotels),
+            f"{weather.risk_level}/{weather.overall_condition}" if weather else "None",
+            f"{budget_analysis.budget_status}" if budget_analysis else "None",
+            f"{travel_score.total_score}" if travel_score else "None",
+        )
 
         return AIResponse(
-            flights=flight_results.flights,
-            hotels=hotel_results.hotels,
-            ai_flight_recommendation=flight_results.ai_flight_recommendation,
-            ai_hotel_recommendation=hotel_results.ai_hotel_recommendation,
+            flights=flights,
+            hotels=hotels,
+            ai_flight_recommendation=ai_flight_rec,
+            ai_hotel_recommendation=ai_hotel_rec,
             itinerary=itinerary,
+            weather_analysis=weather,
+            budget_analysis=budget_analysis,
+            travel_score=travel_score,
         )
+
     except Exception as exc:
         logger.exception("Complete travel search error")
         raise HTTPException(status_code=500, detail=f"Travel search error: {exc}") from exc
 
 
+# ── Itinerary Generator ────────────────────────────────────────────────
 @app.post("/generate_itinerary/", response_model=AIResponse)
 async def get_itinerary(itinerary_request: ItineraryRequest):
     try:
@@ -169,6 +342,7 @@ async def get_itinerary(itinerary_request: ItineraryRequest):
             hotels_text=itinerary_request.hotels,
             check_in_date=itinerary_request.check_in_date,
             check_out_date=itinerary_request.check_out_date,
+            budget=itinerary_request.budget,
         )
         return AIResponse(itinerary=itinerary)
     except Exception as exc:
@@ -176,8 +350,7 @@ async def get_itinerary(itinerary_request: ItineraryRequest):
         raise HTTPException(status_code=500, detail=f"Itinerary generation error: {exc}") from exc
 
 
-
-# ── Travel Assistant Chat ────────────────────────────────────────────
+# ── Travel Assistant Chat ──────────────────────────────────────────────
 @app.post("/chat/", response_model=ChatResponse)
 async def travel_chat(chat_request: ChatRequest):
     """
@@ -197,10 +370,60 @@ async def travel_chat(chat_request: ChatRequest):
         raise HTTPException(status_code=500, detail=f"Chat error: {exc}") from exc
 
 
+# ── Safe Wrappers (for parallel gather) ───────────────────────────────
+
+async def _safe_flight_search(req: FlightRequest):
+    try:
+        result = await search_flights(req)
+        if isinstance(result, dict) and "error" in result:
+            logger.error("Flight search returned error: %s", result["error"])
+            return []
+        return result or []
+    except Exception as exc:
+        logger.error("Flight search failed: %s", exc)
+        return []
+
+
+async def _safe_hotel_search(req: HotelRequest):
+    try:
+        result = await search_hotels(req)
+        if isinstance(result, dict) and "error" in result:
+            logger.error("Hotel search returned error: %s", result["error"])
+            return []
+        return result or []
+    except Exception as exc:
+        logger.error("Hotel search failed: %s", exc)
+        return []
+
+
+async def _safe_ai_rec(data_type: str, text: str) -> str:
+    try:
+        return await get_ai_recommendation(data_type, text)
+    except Exception as exc:
+        logger.error("AI %s recommendation failed: %s", data_type, exc)
+        return f"AI analysis temporarily unavailable for {data_type}."
+
+
+async def _safe_weather(req: WeatherRequest) -> Optional[WeatherAnalysis]:
+    try:
+        return await fetch_weather_analysis(req)
+    except Exception as exc:
+        logger.error("Weather fetch failed (non-fatal): %s", exc)
+        return None
+
+
+# ── Static Frontend ────────────────────────────────────────────────────
 import os as _os
-app.mount("/", StaticFiles(directory=_os.path.join(_os.path.dirname(__file__), "..", "frontend"), html=True), name="frontend")
+app.mount(
+    "/",
+    StaticFiles(
+        directory=_os.path.join(_os.path.dirname(__file__), "..", "frontend"),
+        html=True,
+    ),
+    name="frontend",
+)
 
 
 if __name__ == "__main__":
-    logger.info("Starting Travel Planning API server")
+    logger.info("Starting Travel Planning API v2.0 server")
     uvicorn.run(app, host="0.0.0.0", port=8000)

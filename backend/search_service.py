@@ -1,4 +1,6 @@
 import asyncio
+import re
+from datetime import datetime
 from fastapi import HTTPException
 from serpapi import GoogleSearch
 
@@ -103,6 +105,73 @@ def get_hotel_image(hotel_name: str, given_url: str | None) -> str:
     return HOTEL_IMAGES[img_idx]
 
 # =====================================================================
+# TIME PARSING UTILITIES
+# =====================================================================
+
+def _parse_time_from_airport(airport: dict) -> str:
+    """
+    Extract and normalize departure/arrival time from a SerpAPI airport dict.
+    SerpAPI may provide time as:
+      - "time": "10:05 AM"  (already formatted)
+      - "time": "2024-07-03 10:05"  (date + time)
+      - "time": "2024-07-03T10:05:00"  (ISO format)
+    Returns a clean "HH:MM AM/PM" string, or "" if not available.
+    """
+    raw_time = airport.get("time", "")
+    if not raw_time or raw_time == "N/A":
+        return ""
+
+    raw_str = str(raw_time).strip()
+
+    # Already in 12-hour format: "10:05 AM"
+    if re.match(r"^\d{1,2}:\d{2}\s*(AM|PM)$", raw_str, re.IGNORECASE):
+        return raw_str.upper()
+
+    # 24-hour "HH:MM" or "H:MM"
+    if re.match(r"^\d{1,2}:\d{2}$", raw_str):
+        try:
+            dt = datetime.strptime(raw_str, "%H:%M")
+            return dt.strftime("%I:%M %p").lstrip("0") or "12:00 AM"
+        except ValueError:
+            pass
+
+    # ISO datetime: "2024-07-03T10:05:00" or "2024-07-03 10:05"
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            dt = datetime.strptime(raw_str, fmt)
+            return dt.strftime("%I:%M %p").lstrip("0") or "12:00 AM"
+        except ValueError:
+            continue
+
+    # Fallback: return raw if it looks time-like
+    return raw_str
+
+
+def _format_duration(total_minutes) -> str:
+    """Convert total minutes to 'Xh Ym' format."""
+    try:
+        mins = int(total_minutes)
+        h, m = divmod(mins, 60)
+        if h and m:
+            return f"{h}h {m}m"
+        if h:
+            return f"{h}h"
+        return f"{m}m"
+    except (TypeError, ValueError):
+        return str(total_minutes) if total_minutes else "N/A"
+
+
+def _format_airport(airport: dict) -> str:
+    """Full airport string for backward compatibility."""
+    name = airport.get("name", "Unknown")
+    airport_id = airport.get("id", "???")
+    time_str = _parse_time_from_airport(airport)
+    if time_str:
+        return f"{name} ({airport_id}) at {time_str}"
+    return f"{name} ({airport_id})"
+
+
+# =====================================================================
 # MOCK / DEMO DATA PROVIDERS
 # =====================================================================
 
@@ -113,10 +182,12 @@ def demo_flights(flight_request: FlightRequest) -> list[FlightInfo]:
         FlightInfo(
             airline="IndiGo",
             price="6520",
-            duration="2 hr 45 min",
+            duration="2h 45m",
             stops="Nonstop",
             departure=f"{origin} Airport ({origin}) at 07:15 AM",
             arrival=f"{destination} Airport ({destination}) at 10:00 AM",
+            departure_time="07:15 AM",
+            arrival_time="10:00 AM",
             travel_class="Economy",
             return_date=flight_request.return_date,
             airline_logo="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=900&q=80",
@@ -124,10 +195,12 @@ def demo_flights(flight_request: FlightRequest) -> list[FlightInfo]:
         FlightInfo(
             airline="Air India",
             price="7890",
-            duration="3 hr 10 min",
+            duration="3h 10m",
             stops="Nonstop",
             departure=f"{origin} Airport ({origin}) at 11:30 AM",
             arrival=f"{destination} Airport ({destination}) at 02:40 PM",
+            departure_time="11:30 AM",
+            arrival_time="02:40 PM",
             travel_class="Economy",
             return_date=flight_request.return_date,
             airline_logo="https://images.unsplash.com/photo-1529074963764-98f45c47344b?auto=format&fit=crop&w=900&q=80",
@@ -135,10 +208,12 @@ def demo_flights(flight_request: FlightRequest) -> list[FlightInfo]:
         FlightInfo(
             airline="Vistara",
             price="9340",
-            duration="4 hr 25 min",
+            duration="4h 25m",
             stops="1 stop",
             departure=f"{origin} Airport ({origin}) at 04:20 PM",
             arrival=f"{destination} Airport ({destination}) at 08:45 PM",
+            departure_time="04:20 PM",
+            arrival_time="08:45 PM",
             travel_class="Premium Economy",
             return_date=flight_request.return_date,
             airline_logo="https://images.unsplash.com/photo-1542296332-2e4473faf563?auto=format&fit=crop&w=900&q=80",
@@ -194,6 +269,8 @@ def format_travel_data(data_type: str, data: list[FlightInfo] | list[HotelInfo])
 def _format_flights(flights: list[FlightInfo]) -> str:
     lines = ["Available flight options:"]
     for index, flight in enumerate(flights, start=1):
+        dep_time = flight.departure_time or flight.departure
+        arr_time = flight.arrival_time or flight.arrival
         lines.extend(
             [
                 f"Flight {index}:",
@@ -201,8 +278,8 @@ def _format_flights(flights: list[FlightInfo]) -> str:
                 f"- Price: INR {flight.price}",
                 f"- Duration: {flight.duration}",
                 f"- Stops: {flight.stops}",
-                f"- Departure: {flight.departure}",
-                f"- Arrival: {flight.arrival}",
+                f"- Departure: {dep_time}",
+                f"- Arrival: {arr_time}",
                 f"- Class: {flight.travel_class}",
                 "",
             ]
@@ -277,28 +354,53 @@ async def search_flights(flight_request: FlightRequest):
         return {"error": search_results["error"]}
 
     formatted_flights = []
-    for flight in search_results.get("best_flights", []):
+    raw_best = search_results.get("best_flights", [])
+    logger.info("Raw flight result count (best_flights): %d", len(raw_best))
+
+    for flight in raw_best:
         if not flight.get("flights"):
             continue
 
         first_leg = flight["flights"][0]
+        last_leg  = flight["flights"][-1]
+
+        # Log field keys for debugging (no sensitive data)
+        logger.info(
+            "Flight leg keys — departure_airport keys: %s | arrival_airport keys: %s",
+            list(first_leg.get("departure_airport", {}).keys()),
+            list(last_leg.get("arrival_airport", {}).keys()),
+        )
+
+        dep_airport = first_leg.get("departure_airport", {})
+        arr_airport = last_leg.get("arrival_airport", {})
+
+        dep_time_str = _parse_time_from_airport(dep_airport)
+        arr_time_str = _parse_time_from_airport(arr_airport)
+
+        logger.info("Parsed times — departure: %s | arrival: %s", dep_time_str, arr_time_str)
+
+        duration_str = _format_duration(flight.get("total_duration"))
+
         formatted_flights.append(
             FlightInfo(
                 airline=first_leg.get("airline", "Unknown Airline"),
                 price=str(flight.get("price", "N/A")),
-                duration=f"{flight.get('total_duration', 'N/A')} min",
+                duration=duration_str,
                 stops="Nonstop"
                 if len(flight["flights"]) == 1
                 else f"{len(flight['flights']) - 1} stop(s)",
-                departure=_format_airport(first_leg.get("departure_airport", {})),
-                arrival=_format_airport(first_leg.get("arrival_airport", {})),
+                departure=_format_airport(dep_airport),
+                arrival=_format_airport(arr_airport),
+                departure_time=dep_time_str,
+                arrival_time=arr_time_str,
                 travel_class=first_leg.get("travel_class", "Economy"),
                 return_date=flight_request.return_date,
                 airline_logo=first_leg.get("airline_logo", ""),
             )
         )
 
-    logger.info("Found %s flights", len(formatted_flights))
+    logger.info("Processed %d flights from live API", len(formatted_flights))
+
     if settings.demo_mode and not formatted_flights:
         logger.info("Using demo flights because live flight search returned no results")
         return demo_flights(flight_request)
@@ -352,7 +454,7 @@ async def search_hotels(hotel_request: HotelRequest):
                 first_img = images[0]
                 if isinstance(first_img, dict):
                     raw_image_url = first_img.get("original_image") or first_img.get("thumbnail") or ""
-            
+
             image_url = get_hotel_image(hotel.get("name", ""), raw_image_url)
 
             # Parse location (use neighborhood, location, or fallback to the resolved search city)
@@ -376,10 +478,3 @@ async def search_hotels(hotel_request: HotelRequest):
         logger.info("Using demo hotels because live hotel search returned no results")
         return demo_hotels(hotel_request)
     return formatted_hotels
-
-
-def _format_airport(airport: dict) -> str:
-    name = airport.get("name", "Unknown")
-    airport_id = airport.get("id", "???")
-    time = airport.get("time", "N/A")
-    return f"{name} ({airport_id}) at {time}"
