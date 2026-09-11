@@ -45,6 +45,22 @@ class Settings:
         in {"1", "true", "yes", "on"}
     )
 
+    # ── Database ─────────────────────────────────────────────────────────────
+    db_host:     str       = os.getenv("DB_HOST", "localhost")
+    db_port:     str       = os.getenv("DB_PORT", "3306")
+    db_name:     str       = os.getenv("DB_NAME", "travel_planner")
+    db_user:     str       = os.getenv("DB_USER", "root")
+    db_password: str       = os.getenv("DB_PASSWORD", "")
+
+    # ── JWT ───────────────────────────────────────────────────────────────────
+    jwt_secret_key: str    = os.getenv(
+        "JWT_SECRET_KEY",
+        "travel_planner_change_this_secret_key_in_production"
+    )
+    access_token_expire_minutes: int = int(
+        os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440")
+    )
+
     def __post_init__(self):
 
         if self.groq_api_key:

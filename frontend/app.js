@@ -248,6 +248,8 @@ function renderResults(origin, dest, outbound, ret, budget) {
         if (itinEl) {
             if (currentTripData.itinerary) {
                 itinEl.innerHTML = marked.parse(currentTripData.itinerary);
+                window._lastItinerary = currentTripData.itinerary || '';
+                window._lastDestination = (currentTripData.destination_city || currentTripData.destination || dest || '');
                 const dlBtn = document.getElementById('btn-download-itinerary');
                 if (dlBtn) dlBtn.onclick = () => downloadMarkdown(currentTripData.itinerary, dest, outbound);
             } else {
@@ -1282,3 +1284,288 @@ function scrollChatBottom() {
         chatMsgs.scrollTop = chatMsgs.scrollHeight;
     });
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// AUTH + DESTINATIONS + PLANNERS + SAVED TRIPS — NEW FEATURE BLOCK
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Auth State ───────────────────────────────────────────────────────────────
+const AUTH_KEY = 'tp_auth';
+function getAuth()  { try { return JSON.parse(localStorage.getItem(AUTH_KEY)); } catch { return null; } }
+function setAuth(d) { localStorage.setItem(AUTH_KEY, JSON.stringify(d)); }
+function clearAuth(){ localStorage.removeItem(AUTH_KEY); }
+function getToken() { const a = getAuth(); return a ? a.access_token : null; }
+function getUser()  { const a = getAuth(); return a ? a.user : null; }
+
+// ── Toast notification ────────────────────────────────────────────────────────
+function showToast(message, type = 'success') {
+  const t = document.createElement('div');
+  t.className = `tp-toast tp-toast-${type}`;
+  t.innerHTML = `<i class="fa-solid ${type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}"></i> ${message}`;
+  document.body.appendChild(t);
+  requestAnimationFrame(() => t.classList.add('tp-toast-show'));
+  setTimeout(() => { t.classList.remove('tp-toast-show'); setTimeout(() => t.remove(), 400); }, 3000);
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+async function apiSignup(name, email, password, role = 'traveler') {
+  const res = await fetch('/api/auth/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, password, role }),
+  });
+  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Signup failed'); }
+  return res.json();
+}
+async function apiLogin(email, password) {
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Login failed'); }
+  return res.json();
+}
+async function apiGetMyTrips() {
+  const token = getToken();
+  if (!token) return [];
+  const res = await fetch('/api/ai-trips/my', { headers: { 'Authorization': `Bearer ${token}` } });
+  return res.ok ? res.json() : [];
+}
+async function apiSaveAITrip(data) {
+  const token = getToken();
+  if (!token) throw new Error('Login required');
+  const res = await fetch('/api/ai-trips/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Save failed'); }
+  return res.json();
+}
+async function apiGetDestinations() {
+  try { const r = await fetch('/api/destinations/'); return r.ok ? r.json() : []; } catch { return []; }
+}
+async function apiGetPlanners() {
+  try { const r = await fetch('/api/planners/'); return r.ok ? r.json() : []; } catch { return []; }
+}
+
+// ── Navbar auth UI ────────────────────────────────────────────────────────────
+function updateNavAuth() {
+  const area = document.getElementById('nav-auth-area');
+  if (!area) return;
+  const user = getUser();
+  if (user) {
+    area.innerHTML = `
+      <div class="nav-user-menu">
+        <span class="nav-user-name"><i class="fa-solid fa-circle-user"></i> ${user.name.split(' ')[0]}</span>
+        <button class="nav-my-trips-btn" id="nav-my-trips"><i class="fa-solid fa-bookmark"></i> My Trips</button>
+        <button class="nav-logout-btn" id="nav-logout"><i class="fa-solid fa-right-from-bracket"></i> Sign out</button>
+      </div>`;
+    document.getElementById('nav-logout').addEventListener('click', () => { clearAuth(); updateNavAuth(); showToast('Signed out successfully.'); });
+    document.getElementById('nav-my-trips').addEventListener('click', openMyTripsModal);
+  } else {
+    area.innerHTML = `<button class="nav-signin-btn" id="nav-signin-btn"><i class="fa-solid fa-right-to-bracket"></i> Sign in</button>`;
+    document.getElementById('nav-signin-btn').addEventListener('click', () => openAuthModal('login'));
+  }
+}
+
+// ── Auth Modal ────────────────────────────────────────────────────────────────
+let _authMode = 'login';
+function openAuthModal(mode = 'login') {
+  _authMode = mode;
+  const modal = document.getElementById('auth-modal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  document.getElementById('auth-modal-title').textContent = mode === 'login' ? 'Welcome back' : 'Create account';
+  document.getElementById('auth-name-field').style.display = mode === 'signup' ? 'flex' : 'none';
+  document.getElementById('auth-role-field').style.display = mode === 'signup' ? 'flex' : 'none';
+  document.getElementById('auth-submit-btn').textContent = mode === 'login' ? 'Sign in' : 'Create account';
+  document.getElementById('auth-switch-text').innerHTML = mode === 'login'
+    ? `Don't have an account? <a href="#" id="auth-switch-link">Sign up</a>`
+    : `Already have an account? <a href="#" id="auth-switch-link">Sign in</a>`;
+  document.getElementById('auth-error').textContent = '';
+  // Re-wire switch link
+  document.getElementById('auth-switch-link').addEventListener('click', (e) => {
+    e.preventDefault(); openAuthModal(_authMode === 'login' ? 'signup' : 'login');
+  });
+  document.getElementById('auth-email').focus();
+}
+function closeAuthModal() {
+  const modal = document.getElementById('auth-modal');
+  if (modal) modal.classList.add('hidden');
+}
+async function handleAuthSubmit(e) {
+  e.preventDefault();
+  const errEl  = document.getElementById('auth-error');
+  const btnEl  = document.getElementById('auth-submit-btn');
+  const email  = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  errEl.textContent = '';
+  btnEl.disabled = true;
+  btnEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Please wait...';
+  try {
+    let result;
+    if (_authMode === 'login') {
+      result = await apiLogin(email, password);
+    } else {
+      const name = document.getElementById('auth-name').value.trim();
+      const role = document.getElementById('auth-role').value;
+      result = await apiSignup(name, email, password, role);
+    }
+    setAuth(result);
+    updateNavAuth();
+    closeAuthModal();
+    showToast(`Welcome, ${result.user.name.split(' ')[0]}! 👋`);
+    // If a pending action was queued, retry it
+    if (window._pendingAfterLogin) { 
+        const pending = window._pendingAfterLogin;
+        window._pendingAfterLogin = null;
+        pending(); 
+    }
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    btnEl.disabled = false;
+    btnEl.textContent = _authMode === 'login' ? 'Sign in' : 'Create account';
+  }
+}
+
+// ── Save itinerary ────────────────────────────────────────────────────────────
+async function handleSaveItinerary() {
+  if (!getToken()) {
+    window._pendingAfterLogin = handleSaveItinerary;
+    openAuthModal('login');
+    showToast('Please sign in to save your trip', 'error');
+    return;
+  }
+  const btn = document.getElementById('btn-save-itinerary');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…'; }
+  try {
+    await apiSaveAITrip({
+      destination_name: window._lastDestination || 'Unknown',
+      generated_itinerary: window._lastItinerary || '',
+      travelers_count: 1,
+      preferences: {},
+    });
+    showToast('Itinerary saved to your account! 🎉');
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-bookmark"></i> Save Trip'; }
+  }
+}
+
+// ── My Trips Modal ────────────────────────────────────────────────────────────
+async function openMyTripsModal() {
+  const modal = document.getElementById('my-trips-modal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  const list = document.getElementById('my-trips-list');
+  list.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  const trips = await apiGetMyTrips();
+  if (!trips.length) {
+    list.innerHTML = '<p class="empty-state">No saved trips yet. Search for a destination and save your itinerary!</p>';
+    return;
+  }
+  list.innerHTML = trips.map(t => {
+    const date = new Date(t.created_at).toLocaleDateString('en-IN', {day: 'numeric', month: 'short', year: 'numeric'});
+    const preview = (t.generated_itinerary || '').substring(0, 180).replace(/#+/g, '').trim();
+    return `
+      <div class="saved-trip-card">
+        <div class="stc-header">
+          <span class="stc-dest"><i class="fa-solid fa-location-dot"></i> ${t.destination_name || 'Unknown'}</span>
+          <span class="stc-date">${date}</span>
+        </div>
+        <p class="stc-preview">${preview}…</p>
+      </div>`;
+  }).join('');
+}
+function closeMyTripsModal() {
+  const modal = document.getElementById('my-trips-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+// ── Destinations Section ──────────────────────────────────────────────────────
+async function loadDestinationsSection() {
+  const wrap = document.getElementById('destinations-section-cards');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  const dests = await apiGetDestinations();
+  if (!dests.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = dests.map(d => `
+    <div class="dest-card">
+      <div class="dest-card-img" style="background-image:url('${d.image || ''}')">
+        <span class="dest-badge">${d.best_time_to_visit || 'Year-round'}</span>
+      </div>
+      <div class="dest-card-body">
+        <h3 class="dest-card-name">${d.name}</h3>
+        <p class="dest-card-state"><i class="fa-solid fa-location-dot"></i> ${d.state || d.country}</p>
+        ${d.average_budget ? `<div class="dest-card-budget"><i class="fa-solid fa-indian-rupee-sign"></i> Avg. \u20B9${Number(d.average_budget).toLocaleString('en-IN')}</div>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+// ── Planners Section ──────────────────────────────────────────────────────────
+async function loadPlannersSection() {
+  const wrap = document.getElementById('planners-section-cards');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  const planners = await apiGetPlanners();
+  if (!planners.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = planners.map(p => `
+    <div class="planner-card">
+      <div class="planner-card-avatar">${(p.name || 'P').charAt(0).toUpperCase()}</div>
+      <div class="planner-card-body">
+        <h3 class="planner-card-name">${p.name}</h3>
+        <p class="planner-location"><i class="fa-solid fa-location-dot"></i> ${p.location || 'India'}</p>
+        <div class="planner-meta">
+          <span class="pm-rating"><i class="fa-solid fa-star"></i> ${Number(p.rating || 0).toFixed(1)}</span>
+          <span><i class="fa-solid fa-briefcase"></i> ${p.years_experience} yrs exp</span>
+          <span><i class="fa-solid fa-indian-rupee-sign"></i> from \u20B9${Number(p.starting_price).toLocaleString('en-IN')}</span>
+        </div>
+        ${p.bio ? `<p class="planner-bio">${p.bio.substring(0, 110)}…</p>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+// ── DOMContentLoaded: wire everything up ─────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  updateNavAuth();
+  loadDestinationsSection();
+  loadPlannersSection();
+
+  // Auth form
+  const authForm = document.getElementById('auth-form');
+  if (authForm) authForm.addEventListener('submit', handleAuthSubmit);
+
+  // Auth modal close
+  const authClose = document.getElementById('auth-modal-close');
+  if (authClose) authClose.addEventListener('click', closeAuthModal);
+
+  // Click outside to close modals
+  document.addEventListener('click', (e) => {
+    const authModal = document.getElementById('auth-modal');
+    const authBox   = document.getElementById('auth-modal-box');
+    if (authModal && !authModal.classList.contains('hidden') && authBox && !authBox.contains(e.target) && !e.target.closest('#nav-signin-btn') && !e.target.closest('.nav-signin-btn')) {
+      closeAuthModal();
+    }
+    const tripsModal = document.getElementById('my-trips-modal');
+    const tripsBox   = document.getElementById('my-trips-modal-box');
+    if (tripsModal && !tripsModal.classList.contains('hidden') && tripsBox && !tripsBox.contains(e.target) && !e.target.closest('#nav-my-trips')) {
+      closeMyTripsModal();
+    }
+  });
+
+  // Save itinerary
+  const saveBtn = document.getElementById('btn-save-itinerary');
+  if (saveBtn) saveBtn.addEventListener('click', handleSaveItinerary);
+
+  // My trips
+  const myTripsBtn = document.getElementById('btn-my-trips');
+  if (myTripsBtn) myTripsBtn.addEventListener('click', openMyTripsModal);
+
+  // My trips modal close
+  const tripsClose = document.getElementById('my-trips-modal-close');
+  if (tripsClose) tripsClose.addEventListener('click', closeMyTripsModal);
+});

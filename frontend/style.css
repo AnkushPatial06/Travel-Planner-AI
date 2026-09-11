@@ -1793,6 +1793,173 @@ input, button { outline: none; border: none; background: transparent; }
     .score-gauge { width: 100px; height: 100px; }
     .forecast-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
     .budget-status-card { flex-wrap: wrap; }
-    .budget-amounts { margin-left: 0; text-align: left; }
 }
 
+/* ============================================================
+   AUTH & NAV UI
+   ============================================================ */
+.nav-auth-area {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 12px;
+}
+.nav-signin-btn {
+    background: transparent; color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 6px 14px; border-radius: 20px;
+    font-size: .85rem; font-weight: 500; cursor: pointer;
+    transition: all .2s var(--ease);
+}
+.nav-signin-btn:hover { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.5); }
+
+.nav-user-menu {
+    display: flex; align-items: center; gap: 12px;
+}
+.nav-user-name {
+    color: #fff; font-size: .9rem; font-weight: 500;
+    display: flex; align-items: center; gap: 6px;
+}
+.nav-user-name i { font-size: 1.1rem; opacity: 0.9; }
+.nav-my-trips-btn, .nav-logout-btn {
+    background: rgba(255,255,255,0.1); color: #fff; border: none;
+    padding: 5px 12px; border-radius: 6px; font-size: .8rem; cursor: pointer;
+    transition: background .2s;
+}
+.nav-my-trips-btn:hover, .nav-logout-btn:hover { background: rgba(255,255,255,0.25); }
+
+/* ============================================================
+   MODALS
+   ============================================================ */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 9999; padding: 20px;
+    opacity: 1; transition: opacity .2s;
+}
+.modal-overlay.hidden { opacity: 0; pointer-events: none; }
+.modal-box {
+    background: #fff; width: 100%; max-width: 400px;
+    border-radius: 16px; padding: 32px; position: relative;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+    transform: translateY(0); transition: transform .3s var(--ease);
+}
+.modal-overlay.hidden .modal-box { transform: translateY(20px); }
+.modal-box-large { max-width: 600px; }
+.modal-close {
+    position: absolute; top: 16px; right: 16px;
+    background: transparent; border: none; color: var(--text-light);
+    font-size: 1.2rem; cursor: pointer; transition: color .2s;
+}
+.modal-close:hover { color: var(--text-dark); }
+.modal-box h2 { font-size: 1.4rem; color: var(--text-dark); margin-bottom: 24px; font-family: var(--font-display); }
+
+.auth-form { display: flex; flex-direction: column; gap: 16px; }
+.auth-field { margin-bottom: 0; }
+.auth-field input, .auth-field select {
+    width: 100%; padding: 12px; border: 1px solid var(--border);
+    border-radius: 8px; font-size: .95rem; font-family: var(--font-body);
+    transition: border-color .2s;
+}
+.auth-field input:focus, .auth-field select:focus {
+    border-color: var(--brand); outline: none;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+.auth-submit-btn {
+    background: var(--brand); color: #fff; border: none;
+    padding: 14px; border-radius: 8px; font-weight: 600; font-size: 1rem;
+    cursor: pointer; transition: all .2s; margin-top: 8px;
+}
+.auth-submit-btn:hover { background: var(--brand-dark); transform: translateY(-1px); }
+.auth-submit-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+.auth-error { color: #dc2626; font-size: .85rem; min-height: 20px; }
+.auth-switch { text-align: center; font-size: .9rem; color: var(--text-light); margin-top: 10px; }
+.auth-switch a { color: var(--brand); font-weight: 600; }
+
+.my-trips-list {
+    max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+}
+.saved-trip-card {
+    border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+    transition: all .2s var(--ease);
+}
+.saved-trip-card:hover { border-color: var(--brand-light); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+.stc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.stc-dest { font-weight: 700; color: var(--text-dark); display: flex; align-items: center; gap: 6px; }
+.stc-dest i { color: var(--brand); }
+.stc-date { font-size: .8rem; color: var(--text-light); }
+.stc-preview { font-size: .85rem; color: var(--text-muted); line-height: 1.5; }
+
+/* ============================================================
+   DESTINATIONS & PLANNERS SECTIONS
+   ============================================================ */
+.landing-section { margin-top: 60px; padding-top: 40px; border-top: 1px solid var(--border-light); }
+.section-title { font-size: 1.6rem; color: var(--text-dark); margin-bottom: 6px; display: flex; align-items: center; gap: 10px; }
+.section-title i { color: var(--brand); }
+.section-subtitle { color: var(--text-light); margin-bottom: 24px; font-size: 1.05rem; }
+
+.cards-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;
+}
+.dest-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 16px;
+    overflow: hidden; transition: all .2s var(--ease); cursor: pointer;
+}
+.dest-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.08); border-color: var(--brand-light); }
+.dest-card-img {
+    height: 160px; background-size: cover; background-position: center;
+    position: relative; background-color: var(--bg-body);
+}
+.dest-badge {
+    position: absolute; top: 12px; left: 12px;
+    background: rgba(0,0,0,0.6); color: #fff; backdrop-filter: blur(4px);
+    padding: 4px 10px; border-radius: 20px; font-size: .75rem; font-weight: 600;
+}
+.dest-card-body { padding: 16px; }
+.dest-card-name { font-size: 1.15rem; color: var(--text-dark); margin-bottom: 4px; }
+.dest-card-state { font-size: .85rem; color: var(--text-light); display: flex; align-items: center; gap: 4px; margin-bottom: 12px; }
+.dest-card-budget { font-size: .9rem; font-weight: 600; color: var(--text); display: inline-flex; background: var(--bg-body); padding: 4px 10px; border-radius: 6px; }
+
+.planner-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 16px;
+    padding: 20px; display: flex; flex-direction: column; gap: 12px; transition: all .2s var(--ease);
+}
+.planner-card:hover { border-color: var(--brand-light); box-shadow: 0 8px 20px rgba(0,0,0,0.05); }
+.planner-card-avatar {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--brand), var(--brand-light));
+    color: #fff; font-size: 1.5rem; display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+}
+.planner-card-name { font-size: 1.1rem; color: var(--text-dark); margin: 0; }
+.planner-location { font-size: .85rem; color: var(--text-light); margin: 0; }
+.planner-meta {
+    display: flex; gap: 12px; font-size: .8rem; color: var(--text-muted);
+    background: var(--bg-body); padding: 8px 12px; border-radius: 8px; flex-wrap: wrap;
+}
+.pm-rating { font-weight: 700; color: var(--warning); }
+.planner-bio { font-size: .85rem; color: var(--text); line-height: 1.5; margin-top: 4px; }
+.dest-loading { text-align: center; padding: 40px; color: var(--text-light); font-size: 1.5rem; }
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+.tp-toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: #1f2937; color: #fff; padding: 14px 20px;
+    border-radius: 8px; font-size: .95rem; font-weight: 500;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    transform: translateY(100px); opacity: 0; pointer-events: none;
+    transition: all .3s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 10000;
+}
+.tp-toast-success i { color: #10b981; }
+.tp-toast-error i { color: #ef4444; }
+.tp-toast-show { transform: translateY(0); opacity: 1; pointer-events: auto; }
+
+/* Itinerary Toolbar Actions */
+.itinerary-toolbar-actions { display: flex; gap: 12px; }
+.save-btn {
+    background: var(--bg-body); color: var(--brand); border: 1px solid var(--border);
+    padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all .2s;
+}
+.save-btn:hover { background: var(--brand-light); color: var(--brand-dark); border-color: var(--brand); }

@@ -28,7 +28,6 @@ from backend.search_service import (
 )
 
 from backend.weather_service import fetch_weather_analysis
-
 from backend.budget_service import analyze_budget
 
 from backend.ai_service import (
@@ -40,9 +39,24 @@ from backend.ai_service import (
     generate_travel_score,
 )
 
+# ── Database ────────────────────────────────────────────────────────────────
+from backend.database.connection import engine, check_db_connection
+from backend.database import models as db_models  # noqa: F401 — registers all ORM models
+
+# ── New API routers ─────────────────────────────────────────────────────────
+from backend.auth.router import router as auth_router
+from backend.api.health import router as health_router
+from backend.api.destinations import router as destinations_router
+from backend.api.planners import router as planners_router
+from backend.api.packages import router as packages_router
+from backend.api.trips import router as trips_router
+from backend.api.reviews import router as reviews_router
+from backend.api.favorites import router as favorites_router
+from backend.api.ai_trips import router as ai_trips_router
+
 app = FastAPI(title="Travel Planning API", version="2.0.0")
 
-# Add CORS configuration for Railway deployment
+# ── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -51,11 +65,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Register new routers ─────────────────────────────────────────────────────
+app.include_router(auth_router)
+app.include_router(health_router)
+app.include_router(destinations_router)
+app.include_router(planners_router)
+app.include_router(packages_router)
+app.include_router(trips_router)
+app.include_router(reviews_router)
+app.include_router(favorites_router)
+app.include_router(ai_trips_router)
 
-# ── Health ─────────────────────────────────────────────────────────────
+
+# ── Startup: create tables if not already present ───────────────────────────
+@app.on_event("startup")
+async def startup_event():
+    try:
+        db_models.Base.metadata.create_all(bind=engine)
+        if check_db_connection():
+            logger.info("✅ MySQL database connected and tables verified.")
+        else:
+            logger.warning("⚠️  MySQL not reachable — DB features unavailable.")
+    except Exception as exc:
+        logger.warning("⚠️  DB startup warning (non-fatal): %s", exc)
+
+
+# ── Health ──────────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "Travel Planning API", "version": "2.0.0"}
+
 
 
 # ── Flights ────────────────────────────────────────────────────────────

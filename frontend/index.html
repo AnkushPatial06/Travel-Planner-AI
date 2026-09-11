@@ -27,9 +27,15 @@
             <nav class="nav-pills">
                 <a href="#" class="nav-pill active"><i class="fa-solid fa-bed"></i> Stays</a>
                 <a href="#" class="nav-pill"><i class="fa-solid fa-plane"></i> Flights</a>
-                <a href="#" class="nav-pill"><i class="fa-solid fa-route"></i> AI Itinerary</a>
-                <span class="ai-badge"><i class="fa-solid fa-wand-magic-sparkles"></i> Agentic AI v2</span>
+                <a href="#" class="nav-pill"><i class="fa-solid fa-route"></i> Itinerary</a>
+                
             </nav>
+            <div id="nav-auth-area" class="nav-auth-area">
+                <!-- Populated by updateNavAuth() -->
+                <button class="nav-signin-btn" id="nav-signin-btn-default">
+                    <i class="fa-solid fa-right-to-bracket"></i> Sign in
+                </button>
+            </div>
         </div>
     </header>
 
@@ -127,6 +133,20 @@
                     <div class="wf-item"><i class="fa-solid fa-wallet"></i> Budget tracking</div>
                     <div class="wf-item"><i class="fa-solid fa-star"></i> Travel score</div>
                 </div>
+            </div>
+
+            <!-- Destinations Section -->
+            <div class="landing-section">
+                <h2 class="section-title"><i class="fa-solid fa-map-location-dot"></i> Explore Destinations</h2>
+                <p class="section-subtitle">Discover top-rated places around India</p>
+                <div class="cards-grid" id="destinations-section-cards"></div>
+            </div>
+
+            <!-- Planners Section -->
+            <div class="landing-section">
+                <h2 class="section-title"><i class="fa-solid fa-user-tie"></i> Connect with Expert Planners</h2>
+                <p class="section-subtitle">Curated packages and customized itineraries by verified experts</p>
+                <div class="cards-grid" id="planners-section-cards"></div>
             </div>
         </div>
 
@@ -273,9 +293,14 @@
                                         <p>AI-crafted personalized travel plan</p>
                                     </div>
                                 </div>
-                                <button class="dl-btn" id="btn-download-itinerary">
-                                    <i class="fa-solid fa-download"></i> Download
-                                </button>
+                                <div class="itinerary-toolbar-actions">
+                                    <button class="save-btn" id="btn-save-itinerary">
+                                        <i class="fa-solid fa-bookmark"></i> Save Trip
+                                    </button>
+                                    <button class="dl-btn" id="btn-download-itinerary">
+                                        <i class="fa-solid fa-download"></i> Download
+                                    </button>
+                                </div>
                             </div>
                             <div class="itinerary-body markdown-content" id="itinerary-content"></div>
                         </div>
@@ -424,9 +449,54 @@
                 <span class="brand-icon"><i class="fa-solid fa-globe"></i></span>
                 <span>Booking<span class="brand-dot">.ai</span></span>
             </div>
-            <p class="footer-copy">Powered by FastAPI · Open-Meteo · CrewAI · Groq Llama 3.3 · &copy; 2026</p>
+            <p class="footer-copy">All rights reserved &copy; 2026</p>
         </div>
     </footer>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- MODALS                                                      -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    
+    <!-- Auth Modal -->
+    <div class="modal-overlay hidden" id="auth-modal">
+        <div class="modal-box" id="auth-modal-box">
+            <button class="modal-close" id="auth-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            <h2 id="auth-modal-title">Welcome</h2>
+            <form id="auth-form" class="auth-form">
+                <div class="search-field auth-field" id="auth-name-field" style="display:none">
+                    <label>Name</label>
+                    <input type="text" id="auth-name" placeholder="Enter your full name">
+                </div>
+                <div class="search-field auth-field">
+                    <label>Email</label>
+                    <input type="email" id="auth-email" placeholder="Email address" required>
+                </div>
+                <div class="search-field auth-field">
+                    <label>Password</label>
+                    <input type="password" id="auth-password" placeholder="Min. 6 characters" required minlength="6">
+                </div>
+                <div class="search-field auth-field" id="auth-role-field" style="display:none">
+                    <label>Account Type</label>
+                    <select id="auth-role">
+                        <option value="traveler">Traveler</option>
+                        <option value="planner">Travel Planner</option>
+                    </select>
+                </div>
+                <div class="auth-error" id="auth-error"></div>
+                <button type="submit" class="auth-submit-btn" id="auth-submit-btn">Continue</button>
+                <div class="auth-switch" id="auth-switch-text"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- My Trips Modal -->
+    <div class="modal-overlay hidden" id="my-trips-modal">
+        <div class="modal-box modal-box-large" id="my-trips-modal-box">
+            <button class="modal-close" id="my-trips-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            <h2><i class="fa-solid fa-bookmark"></i> My Saved Trips</h2>
+            <div id="my-trips-list" class="my-trips-list"></div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 </body>
