@@ -24,12 +24,17 @@
                 <span class="brand-icon"><i class="fa-solid fa-globe"></i></span>
                 <span class="brand-name">Booking<span class="brand-dot">.ai</span></span>
             </a>
-            <nav class="nav-pills">
-                <a href="#" class="nav-pill active"><i class="fa-solid fa-bed"></i> Stays</a>
-                <a href="#" class="nav-pill"><i class="fa-solid fa-plane"></i> Flights</a>
-                <a href="#" class="nav-pill"><i class="fa-solid fa-route"></i> Itinerary</a>
-                
+            <nav class="nav-pills" id="nav-pills">
+                <a href="#hero" class="nav-pill active" data-scroll="hero"><i class="fa-solid fa-bed"></i> Stays</a>
+                <a href="#hero" class="nav-pill" data-scroll="hero"><i class="fa-solid fa-plane"></i> Flights</a>
+                <a href="#" class="nav-pill" id="nav-link-destinations"><i class="fa-solid fa-map-location-dot"></i> Destinations</a>
+                <a href="#" class="nav-pill" id="nav-link-planners"><i class="fa-solid fa-user-tie"></i> Planners</a>
+                <a href="#" class="nav-pill" id="nav-link-packages"><i class="fa-solid fa-suitcase-rolling"></i> Packages</a>
+                <span class="ai-badge"><i class="fa-solid fa-wand-magic-sparkles"></i> Agentic AI v2</span>
             </nav>
+            <button class="nav-hamburger" id="nav-hamburger" title="Menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
             <div id="nav-auth-area" class="nav-auth-area">
                 <!-- Populated by updateNavAuth() -->
                 <button class="nav-signin-btn" id="nav-signin-btn-default">
@@ -136,17 +141,39 @@
             </div>
 
             <!-- Destinations Section -->
-            <div class="landing-section">
-                <h2 class="section-title"><i class="fa-solid fa-map-location-dot"></i> Explore Destinations</h2>
-                <p class="section-subtitle">Discover top-rated places around India</p>
+            <div class="landing-section" id="section-destinations">
+                <div class="section-title-row">
+                    <div>
+                        <h2 class="section-title"><i class="fa-solid fa-map-location-dot"></i> Explore Destinations</h2>
+                        <p class="section-subtitle">Discover top-rated places around India</p>
+                    </div>
+                    <button class="section-viewall-btn" id="btn-viewall-destinations">View all <i class="fa-solid fa-arrow-right"></i></button>
+                </div>
                 <div class="cards-grid" id="destinations-section-cards"></div>
             </div>
 
             <!-- Planners Section -->
-            <div class="landing-section">
-                <h2 class="section-title"><i class="fa-solid fa-user-tie"></i> Connect with Expert Planners</h2>
-                <p class="section-subtitle">Curated packages and customized itineraries by verified experts</p>
+            <div class="landing-section" id="section-planners">
+                <div class="section-title-row">
+                    <div>
+                        <h2 class="section-title"><i class="fa-solid fa-user-tie"></i> Connect with Expert Planners</h2>
+                        <p class="section-subtitle">Curated packages and customized itineraries by verified experts</p>
+                    </div>
+                    <button class="section-viewall-btn" id="btn-viewall-planners">View all <i class="fa-solid fa-arrow-right"></i></button>
+                </div>
                 <div class="cards-grid" id="planners-section-cards"></div>
+            </div>
+
+            <!-- Packages Section -->
+            <div class="landing-section" id="section-packages">
+                <div class="section-title-row">
+                    <div>
+                        <h2 class="section-title"><i class="fa-solid fa-suitcase-rolling"></i> Ready-Made Packages</h2>
+                        <p class="section-subtitle">Fixed-itinerary trips designed and priced by our planners</p>
+                    </div>
+                    <button class="section-viewall-btn" id="btn-viewall-packages">View all <i class="fa-solid fa-arrow-right"></i></button>
+                </div>
+                <div class="cards-grid" id="packages-section-cards"></div>
             </div>
         </div>
 
@@ -176,6 +203,9 @@
                     </button>
                 </div>
             </div>
+
+            <!-- ─── DB Destination Match Inject ─── -->
+            <div id="matched-destination-wrap"></div>
 
             <!-- ─── Results Body ─── -->
             <div class="results-body">
@@ -311,7 +341,7 @@
         </div><!-- end results-layout -->
 
         <!-- ─── Budget Tracker Sidebar ─── -->
-        <aside class="budget-sidebar" id="budget-sidebar">
+        <aside class="budget-sidebar hidden" id="budget-sidebar">
             <div class="budget-card">
                 <div class="bc-header">
                     <i class="fa-solid fa-chart-pie"></i>
@@ -489,12 +519,215 @@
         </div>
     </div>
 
-    <!-- My Trips Modal -->
+    <!-- My Trips Modal (AI Itineraries / Trip Requests / Favorites) -->
     <div class="modal-overlay hidden" id="my-trips-modal">
         <div class="modal-box modal-box-large" id="my-trips-modal-box">
             <button class="modal-close" id="my-trips-modal-close"><i class="fa-solid fa-xmark"></i></button>
-            <h2><i class="fa-solid fa-bookmark"></i> My Saved Trips</h2>
-            <div id="my-trips-list" class="my-trips-list"></div>
+            <h2><i class="fa-solid fa-bookmark"></i> My Trips</h2>
+            <div class="mt-tabs" id="mt-tabs">
+                <button class="mt-tab-btn active" data-mt-tab="mt-ai-trips">AI Itineraries</button>
+                <button class="mt-tab-btn" data-mt-tab="mt-requests">Trip Requests</button>
+                <button class="mt-tab-btn" data-mt-tab="mt-favorites">Favorites</button>
+            </div>
+            <div class="mt-panel active" id="mt-ai-trips">
+                <div id="my-trips-list" class="my-trips-list"></div>
+            </div>
+            <div class="mt-panel" id="mt-requests">
+                <div id="my-requests-list" class="my-trips-list"></div>
+            </div>
+            <div class="mt-panel" id="mt-favorites">
+                <div id="my-favorites-list" class="my-trips-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Explore / Browse Modal (Destinations · Planners · Packages "View all") -->
+    <div class="modal-overlay hidden" id="browse-modal">
+        <div class="modal-box modal-box-xl" id="browse-modal-box">
+            <button class="modal-close" id="browse-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            <h2 id="browse-modal-title"><i class="fa-solid fa-compass"></i> Browse</h2>
+            <div class="browse-filter-bar hidden" id="browse-filter-bar">
+                <label for="browse-dest-filter">Filter by destination</label>
+                <select id="browse-dest-filter"><option value="">All destinations</option></select>
+            </div>
+            <div class="cards-grid browse-grid" id="browse-modal-grid"></div>
+        </div>
+    </div>
+
+    <!-- Destination Detail Modal -->
+    <div class="modal-overlay hidden" id="destination-modal">
+        <div class="modal-box modal-box-xl" id="destination-modal-box">
+            <button class="modal-close" id="destination-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            <div id="destination-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Planner Detail Modal -->
+    <div class="modal-overlay hidden" id="planner-modal">
+        <div class="modal-box modal-box-xl" id="planner-modal-box">
+            <button class="modal-close" id="planner-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            <div id="planner-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Package Detail Modal -->
+    <div class="modal-overlay hidden" id="package-modal">
+        <div class="modal-box modal-box-xl" id="package-modal-box">
+            <button class="modal-close" id="package-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            <div id="package-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Trip Request Modal -->
+    <div class="modal-overlay hidden" id="request-modal">
+        <div class="modal-box" id="request-modal-box">
+            <button class="modal-close" id="request-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            <h2><i class="fa-solid fa-paper-plane"></i> Request This Trip</h2>
+            <form class="auth-form" id="request-form">
+                <input type="hidden" id="req-planner-id">
+                <input type="hidden" id="req-destination-id">
+                <input type="hidden" id="req-package-id">
+                <div class="search-field auth-field">
+                    <label>Start date</label>
+                    <input type="date" id="req-start-date" required>
+                </div>
+                <div class="search-field auth-field">
+                    <label>End date</label>
+                    <input type="date" id="req-end-date" required>
+                </div>
+                <div class="search-field auth-field">
+                    <label>Travelers</label>
+                    <input type="number" id="req-travelers" min="1" value="2" required>
+                </div>
+                <div class="search-field auth-field">
+                    <label>Budget (INR, optional)</label>
+                    <input type="number" id="req-budget" min="0" placeholder="e.g. 60000">
+                </div>
+                <div class="search-field auth-field">
+                    <label>Travel style</label>
+                    <select id="req-style">
+                        <option value="">Not specified</option>
+                        <option value="relaxed">Relaxed</option>
+                        <option value="adventure">Adventure</option>
+                        <option value="luxury">Luxury</option>
+                        <option value="budget">Budget</option>
+                        <option value="family">Family</option>
+                    </select>
+                </div>
+                <div class="search-field auth-field">
+                    <label>Requirements / notes</label>
+                    <input type="text" id="req-requirements" placeholder="Anything the planner should know">
+                </div>
+                <div class="auth-error" id="request-error"></div>
+                <button type="submit" class="auth-submit-btn" id="request-submit-btn">Send Request</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Review Modal -->
+    <div class="modal-overlay hidden" id="review-modal">
+        <div class="modal-box" id="review-modal-box">
+            <button class="modal-close" id="review-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            <h2><i class="fa-solid fa-star"></i> Leave a Review</h2>
+            <form class="auth-form" id="review-form">
+                <input type="hidden" id="rev-planner-id">
+                <div class="search-field auth-field">
+                    <label>Rating</label>
+                    <div class="star-picker" id="review-star-picker">
+                        <i class="fa-solid fa-star" data-val="1"></i>
+                        <i class="fa-solid fa-star" data-val="2"></i>
+                        <i class="fa-solid fa-star" data-val="3"></i>
+                        <i class="fa-solid fa-star" data-val="4"></i>
+                        <i class="fa-solid fa-star" data-val="5"></i>
+                    </div>
+                    <input type="hidden" id="rev-rating" value="5">
+                </div>
+                <div class="search-field auth-field">
+                    <label>Your review</label>
+                    <input type="text" id="rev-text" placeholder="How was your experience?">
+                </div>
+                <div class="auth-error" id="review-error"></div>
+                <button type="submit" class="auth-submit-btn" id="review-submit-btn">Submit Review</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Planner Dashboard Modal -->
+    <div class="modal-overlay hidden" id="dashboard-modal">
+        <div class="modal-box modal-box-xl" id="dashboard-modal-box">
+            <button class="modal-close" id="dashboard-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            <h2><i class="fa-solid fa-briefcase"></i> Planner Dashboard</h2>
+            <div class="mt-tabs" id="dash-tabs">
+                <button class="mt-tab-btn active" data-dash-tab="dash-profile">My Profile</button>
+                <button class="mt-tab-btn" data-dash-tab="dash-packages">My Packages</button>
+                <button class="mt-tab-btn" data-dash-tab="dash-requests">Incoming Requests</button>
+            </div>
+
+            <div class="mt-panel active" id="dash-profile">
+                <form class="auth-form" id="dash-profile-form">
+                    <div class="search-field auth-field">
+                        <label>Bio</label>
+                        <input type="text" id="dash-bio" placeholder="Tell travelers about yourself">
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Location</label>
+                        <input type="text" id="dash-location" placeholder="e.g. Goa, India">
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Years of experience</label>
+                        <input type="number" id="dash-years" min="0" value="0">
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Starting price (INR)</label>
+                        <input type="number" id="dash-price" min="0" value="0">
+                    </div>
+                    <div class="auth-error" id="dash-profile-error"></div>
+                    <button type="submit" class="auth-submit-btn" id="dash-profile-submit">Save Profile</button>
+                </form>
+            </div>
+
+            <div class="mt-panel" id="dash-packages">
+                <button class="section-viewall-btn" id="btn-new-package" style="margin-bottom:16px">
+                    <i class="fa-solid fa-plus"></i> New Package
+                </button>
+                <form class="auth-form hidden" id="dash-package-form">
+                    <div class="search-field auth-field">
+                        <label>Title</label>
+                        <input type="text" id="pkg-title" placeholder="e.g. Golden Triangle Explorer" required>
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Destination</label>
+                        <select id="pkg-destination"></select>
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Description</label>
+                        <input type="text" id="pkg-description" placeholder="Short description">
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Duration (days)</label>
+                        <input type="number" id="pkg-duration" min="1" value="3" required>
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Price (INR)</label>
+                        <input type="number" id="pkg-price" min="0" value="10000" required>
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Max travelers</label>
+                        <input type="number" id="pkg-max-travelers" min="1" value="10">
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Travel style</label>
+                        <input type="text" id="pkg-style" placeholder="e.g. adventure, luxury, family">
+                    </div>
+                    <div class="auth-error" id="dash-package-error"></div>
+                    <button type="submit" class="auth-submit-btn" id="dash-package-submit">Create Package</button>
+                </form>
+                <div id="dash-packages-list" class="my-trips-list"></div>
+            </div>
+
+            <div class="mt-panel" id="dash-requests">
+                <div id="dash-requests-list" class="my-trips-list"></div>
+            </div>
         </div>
     </div>
 

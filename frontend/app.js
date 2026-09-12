@@ -4,9 +4,10 @@
 
 // ── Backend Configuration ──────────────────────────────────
 const BACKEND_URL = (
-    window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1'
-) ? '' : 'https://travel-planner-ai-production-f4c4.up.railway.app';
+  window.location.protocol === 'file:' ||
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1'
+) ? 'http://127.0.0.1:8000' : '';
 
 // ── State ──────────────────────────────────────────────────
 let currentTripData = null;
@@ -48,13 +49,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const nextWeek = new Date(tomorrow);
     nextWeek.setDate(tomorrow.getDate() + 6);
 
-    outboundInput.value = formatDate(tomorrow);
-    returnInput.value   = formatDate(nextWeek);
+    if (outboundInput) {
+        outboundInput.value = formatDate(tomorrow);
+    }
+
+    if (returnInput) {
+        returnInput.value = formatDate(nextWeek);
+    }
 
     // Nav scroll style
     window.addEventListener('scroll', () => {
-        document.getElementById('topnav').style.boxShadow =
-            window.scrollY > 10 ? '0 4px 24px rgba(0,0,0,.35)' : '0 2px 12px rgba(0,0,0,.3)';
+        const topnav =
+            document.getElementById('topnav');
+
+        if (topnav) {
+            topnav.style.boxShadow =
+                window.scrollY > 10
+                    ? '0 4px 24px rgba(0,0,0,.35)'
+                    : '0 2px 12px rgba(0,0,0,.3)';
+        }
     });
 
     // Initial budget display
@@ -62,16 +75,19 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── Swap Airports ──────────────────────────────────────────
-document.getElementById('swap-airports').addEventListener('click', () => {
+document.getElementById('swap-airports')?.addEventListener('click', () => {
     const origin = document.getElementById('origin');
     const dest   = document.getElementById('destination');
-    [origin.value, dest.value] = [dest.value, origin.value];
+
+    if (origin && dest) {
+        [origin.value, dest.value] = [dest.value, origin.value];
+    }
 });
 
 // ── New Search Button ──────────────────────────────────────
-document.getElementById('new-search-btn').addEventListener('click', () => {
-    resultsEl.classList.add('hidden');
-    welcomeEl.classList.remove('hidden');
+document.getElementById('new-search-btn')?.addEventListener('click', () => {
+    resultsEl?.classList.add('hidden');
+    welcomeEl?.classList.remove('hidden');
     window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
@@ -185,6 +201,10 @@ searchForm.addEventListener('submit', async (e) => {
 
         renderResults(origin, destination, outbound, ret, budget);
 
+        // ── AI Search → DB Destination Matching ────────────────────────────────
+        // Async: try to match the destination against our DB after results appear
+        matchAndShowDestination(destination).catch(e => console.warn('[DestMatch]', e));
+
     } catch (err) {
         console.error('[Travel Planner] Search error:', err);
         showToast(`Search error: ${err.message}`, 'error');
@@ -291,11 +311,111 @@ function renderResults(origin, dest, outbound, ret, budget) {
     // ▶ STEP 8: Show results — default to Stays tab
     tabBtns[0].click();
     resultsEl.classList.remove('hidden');
+    document.getElementById('budget-sidebar').classList.remove('hidden');
     updateBudgetTracker(budget);
 
     setTimeout(() => {
         resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
+}
+
+// ── AI Search → DB Destination Matching ─────────────────────────────────────
+// After a search, try to find the DB destination matching the searched destination.
+// Uses multi-strategy fuzzy matching: IATA code → city name → partial match.
+async function matchAndShowDestination(destCode) {
+    const wrap = document.getElementById('matched-destination-wrap');
+    if (!wrap) return; // section not present in HTML — safe no-op
+
+    // Normalize the destination input (may be "GOA", "Goa", "Bombay" etc.)
+    const normalised = destCode.trim().toUpperCase();
+    // IATA → common city name mapping (extend as needed)
+    const iataToCity = {
+        GOI: 'Goa', GOA: 'Goa', BOM: 'Mumbai', DEL: 'Delhi', BLR: 'Bangalore',
+        BBI: 'Bhubaneswar', MAA: 'Chennai', CCU: 'Kolkata', HYD: 'Hyderabad',
+        AMD: 'Ahmedabad', JAI: 'Jaipur', COK: 'Kochi', SXR: 'Kashmir',
+        LUH: 'Ludhiana', IXC: 'Chandigarh', IXL: 'Ladakh', IXM: 'Madurai',
+        IXJ: 'Jammu', ATQ: 'Amritsar', KUU: 'Kullu', BHO: 'Bhopal',
+        VNS: 'Varanasi', GAU: 'Guwahati', IXB: 'Bagdogra',
+    };
+    const cityHint = iataToCity[normalised] || destCode;
+
+    // Fetch all destinations (use cache if available)
+    const dests = window._allDestinations && window._allDestinations.length
+        ? window._allDestinations
+        : await apiGetDestinations();
+    if (!dests.length) { wrap.innerHTML = ''; return; }
+
+    // Multi-strategy match:
+    // 1. Exact name match (case-insensitive)
+    // 2. Destination name contains the city hint
+    // 3. City hint contains the destination name
+    const lc = (s) => (s || '').toLowerCase();
+    const hint = lc(cityHint);
+    let match = dests.find(d => lc(d.name) === hint) ||
+                dests.find(d => lc(d.name).includes(hint)) ||
+                dests.find(d => hint.includes(lc(d.name)));
+
+    if (!match) {
+        // No match found — clear the section
+        wrap.innerHTML = '';
+        return;
+    }
+
+    // Fetch packages for matched destination and planners
+    await ensureFavoritesLoaded();
+    const [pkgs, planners] = await Promise.all([
+        apiGetPackages(match.id),
+        apiGetPlanners(),
+    ]);
+
+    // Filter planners who specialise in this destination
+    // (API doesn't filter by destination, so show all planners — top 3)
+    const topPlanners = planners.slice(0, 3);
+
+    wrap.innerHTML = `
+      <div class="matched-dest-banner">
+        <div class="matched-dest-hero" style="background-image:url('${match.image || ''}')">
+          <div class="matched-dest-overlay"></div>
+          <div class="matched-dest-content">
+            <div class="matched-dest-label"><i class="fa-solid fa-circle-check"></i> Destination Match</div>
+            <div class="matched-dest-name">${escHtml(match.name)}</div>
+            <div class="matched-dest-meta">
+              <span><i class="fa-solid fa-location-dot"></i> ${escHtml(match.state || '')}${match.state ? ', ' : ''}${escHtml(match.country || 'India')}</span>
+              ${match.best_time_to_visit ? `<span><i class="fa-solid fa-calendar"></i> Best time: ${escHtml(match.best_time_to_visit)}</span>` : ''}
+              ${match.average_budget ? `<span><i class="fa-solid fa-indian-rupee-sign"></i> Avg. ₹${Number(match.average_budget).toLocaleString('en-IN')}</span>` : ''}
+            </div>
+            <p class="matched-dest-desc">${escHtml((match.description || '').substring(0, 180))}…</p>
+            <div class="matched-dest-actions">
+              <button class="matched-dest-btn" onclick="openDestinationModal(${match.id})"><i class="fa-solid fa-map-location-dot"></i> Explore Destination</button>
+              <button class="matched-dest-btn outline" onclick="openBrowseModal('packages')"><i class="fa-solid fa-suitcase-rolling"></i> View All Packages</button>
+            </div>
+          </div>
+        </div>
+        ${pkgs.length ? `
+        <div class="matched-dest-section">
+          <div class="matched-dest-section-title"><i class="fa-solid fa-suitcase-rolling"></i> Curated Packages for ${escHtml(match.name)}</div>
+          <div class="cards-grid matched-packages-grid" id="matched-packages-grid">
+            ${pkgs.slice(0, 3).map(packageCardHtml).join('')}
+          </div>
+        </div>` : ''}
+        ${topPlanners.length ? `
+        <div class="matched-dest-section">
+          <div class="matched-dest-section-title"><i class="fa-solid fa-user-tie"></i> Expert Travel Planners</div>
+          <div class="cards-grid matched-planners-grid" id="matched-planners-grid">
+            ${topPlanners.map(plannerCardHtml).join('')}
+          </div>
+        </div>` : ''}
+      </div>
+    `;
+
+    // Wire up cards
+    wireFavHearts(wrap);
+    wrap.querySelectorAll('.package-card').forEach(card => {
+        card.addEventListener('click', () => openPackageModal(parseInt(card.getAttribute('data-package-id'))));
+    });
+    wrap.querySelectorAll('.planner-card').forEach(card => {
+        card.addEventListener('click', () => openPlannerModal(parseInt(card.getAttribute('data-planner-id'))));
+    });
 }
 
 // ── Render Hotel Cards ─────────────────────────────────────
@@ -931,37 +1051,9 @@ function animateLoadingSteps() {
 }
 
 // ── Toast Notification ─────────────────────────────────────
-function showToast(msg, type = 'info') {
-    const old = document.querySelector('.toast-msg');
-    if (old) old.remove();
-
-    const t = document.createElement('div');
-    t.className = 'toast-msg';
-    const colors = { success: '#00875a', error: '#d32f2f', info: '#006ce4' };
-    t.style.cssText = `
-        position:fixed;bottom:28px;right:28px;z-index:9999;
-        background:${colors[type]||colors.info};color:#fff;
-        padding:12px 22px;border-radius:12px;
-        font-size:.88rem;font-weight:600;font-family:Inter,sans-serif;
-        box-shadow:0 8px 24px rgba(0,0,0,.25);
-        animation:slideInToast .3s cubic-bezier(.4,0,.2,1);
-    `;
-    t.textContent = msg;
-
-    if (!document.querySelector('#toast-style')) {
-        const s = document.createElement('style');
-        s.id = 'toast-style';
-        s.textContent = `
-            @keyframes slideInToast {
-                from { opacity:0; transform:translateY(16px); }
-                to   { opacity:1; transform:translateY(0); }
-            }`;
-        document.head.appendChild(s);
-    }
-
-    document.body.appendChild(t);
-    setTimeout(() => t.remove(), 3200);
-}
+// NOTE: showToast is defined once below in the AUTH block — this is a deliberate
+// single-definition to avoid duplicate function conflicts.
+// (Former duplicate removed — the authoritative showToast is at the auth section)
 
 // ── Empty State HTML ───────────────────────────────────────
 function emptyState(icon, title, sub) {
@@ -1080,28 +1172,57 @@ const chatSendBtn = document.getElementById('chat-send-btn');
 const chatStatus  = document.getElementById('chat-status');
 
 // ── Toggle Chat ────────────────────────────────────────────
-chatFab.addEventListener('click', () => {
-    chatOpen = !chatOpen;
-    chatPanel.classList.toggle('hidden', !chatOpen);
-    chatFab.classList.toggle('active', chatOpen);
-    chatFabIcon.className = chatOpen ? 'fa-solid fa-xmark' : 'fa-solid fa-comments';
-    if (chatOpen) {
-        chatInput.focus();
-        scrollChatBottom();
+if (chatFab) {
+    chatFab.addEventListener('click', () => {
+        chatOpen = !chatOpen;
+
+        if (chatPanel) {
+            chatPanel.classList.toggle('hidden', !chatOpen);
+        }
+
+        chatFab.classList.toggle('active', chatOpen);
+
+        if (chatFabIcon) {
+            chatFabIcon.className = chatOpen
+                ? 'fa-solid fa-xmark'
+                : 'fa-solid fa-comments';
+        }
+
+        if (chatOpen) {
+            if (chatInput) {
+                chatInput.focus();
+            }
+
+            scrollChatBottom();
+        }
+    });
+}
+
+document.getElementById('chat-close')?.addEventListener('click', () => {
+    chatOpen = false;
+
+    if (chatPanel) {
+        chatPanel.classList.add('hidden');
+    }
+
+    if (chatFab) {
+        chatFab.classList.remove('active');
+    }
+
+    if (chatFabIcon) {
+        chatFabIcon.className = 'fa-solid fa-comments';
     }
 });
 
-document.getElementById('chat-close').addEventListener('click', () => {
-    chatOpen = false;
-    chatPanel.classList.add('hidden');
-    chatFab.classList.remove('active');
-    chatFabIcon.className = 'fa-solid fa-comments';
-});
-
-document.getElementById('chat-clear').addEventListener('click', () => {
+document.getElementById('chat-clear')?.addEventListener('click', () => {
     chatHistory = [];
-    chatMsgs.innerHTML = '';
-    addChatMsg('assistant',
+
+    if (chatMsgs) {
+        chatMsgs.innerHTML = '';
+    }
+
+    addChatMsg(
+        'assistant',
         "Chat cleared! I'm ready to help with your travel plans. 🌍\n\nAsk me about your flights, hotels, budget, weather, packing, or anything travel-related."
     );
 });
@@ -1115,12 +1236,19 @@ document.querySelectorAll('.chat-chip').forEach(chip => {
 });
 
 // ── Form Submit ────────────────────────────────────────────
-chatForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const msg = chatInput.value.trim();
-    if (!msg || chatBusy) return;
-    sendChatMessage(msg);
-});
+if (chatForm && chatInput) {
+    chatForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        const msg = chatInput.value.trim();
+
+        if (!msg || chatBusy) {
+            return;
+        }
+
+        sendChatMessage(msg);
+    });
+}
 
 // ── Build Trip Context Snapshot ─────────────────────────────
 function buildTripContext() {
@@ -1309,7 +1437,7 @@ function showToast(message, type = 'success') {
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 async function apiSignup(name, email, password, role = 'traveler') {
-  const res = await fetch('/api/auth/signup', {
+  const res = await fetch(BACKEND_URL + '/api/auth/signup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, email, password, role }),
@@ -1318,7 +1446,7 @@ async function apiSignup(name, email, password, role = 'traveler') {
   return res.json();
 }
 async function apiLogin(email, password) {
-  const res = await fetch('/api/auth/login', {
+  const res = await fetch(BACKEND_URL + '/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -1329,13 +1457,13 @@ async function apiLogin(email, password) {
 async function apiGetMyTrips() {
   const token = getToken();
   if (!token) return [];
-  const res = await fetch('/api/ai-trips/my', { headers: { 'Authorization': `Bearer ${token}` } });
+  const res = await fetch(BACKEND_URL + '/api/ai-trips/my', { headers: { 'Authorization': `Bearer ${token}` } });
   return res.ok ? res.json() : [];
 }
 async function apiSaveAITrip(data) {
   const token = getToken();
   if (!token) throw new Error('Login required');
-  const res = await fetch('/api/ai-trips/save', {
+  const res = await fetch(BACKEND_URL + '/api/ai-trips/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify(data),
@@ -1344,91 +1472,593 @@ async function apiSaveAITrip(data) {
   return res.json();
 }
 async function apiGetDestinations() {
-  try { const r = await fetch('/api/destinations/'); return r.ok ? r.json() : []; } catch { return []; }
+  try { const r = await fetch(BACKEND_URL + '/api/destinations/?limit=100'); return r.ok ? r.json() : []; } catch { return []; }
+}
+async function apiGetDestination(id) {
+  const r = await fetch(BACKEND_URL + `/api/destinations/${id}`);
+  if (!r.ok) throw new Error('Destination not found');
+  return r.json();
 }
 async function apiGetPlanners() {
-  try { const r = await fetch('/api/planners/'); return r.ok ? r.json() : []; } catch { return []; }
+  try { const r = await fetch(BACKEND_URL + '/api/planners/?limit=100'); return r.ok ? r.json() : []; } catch { return []; }
+}
+async function apiGetPlanner(id) {
+  const r = await fetch(BACKEND_URL + `/api/planners/${id}`);
+  if (!r.ok) throw new Error('Planner not found');
+  return r.json();
+}
+async function apiSavePlannerProfile(payload) {
+  const token = getToken();
+  if (!token) throw new Error('Login required');
+  const res = await fetch(BACKEND_URL + '/api/planners/profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.detail || 'Could not save profile'); }
+  return res.json();
+}
+async function apiGetPackages(destinationId) {
+  try {
+    const url = BACKEND_URL + (destinationId ? `/api/packages/?destination_id=${destinationId}&limit=100` : '/api/packages/?limit=100');
+    const r = await fetch(url);
+    return r.ok ? r.json() : [];
+  } catch { return []; }
+}
+async function apiGetPackage(id) {
+  const r = await fetch(BACKEND_URL + `/api/packages/${id}`);
+  if (!r.ok) throw new Error('Package not found');
+  return r.json();
+}
+async function apiCreatePackage(payload) {
+  const token = getToken();
+  if (!token) throw new Error('Login required');
+  const res = await fetch(BACKEND_URL + '/api/packages/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.detail || 'Could not create package'); }
+  return res.json();
+}
+async function apiGetPlannerReviews(plannerUserId) {
+  try { const r = await fetch(BACKEND_URL + `/api/reviews/planner/${plannerUserId}`); return r.ok ? r.json() : []; } catch { return []; }
+}
+async function apiCreateReview(payload) {
+  const token = getToken();
+  if (!token) throw new Error('Login required');
+  const res = await fetch(BACKEND_URL + '/api/reviews/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.detail || 'Could not submit review'); }
+  return res.json();
+}
+async function apiCreateTripRequest(payload) {
+  const token = getToken();
+  if (!token) throw new Error('Login required');
+  const res = await fetch(BACKEND_URL + '/api/trips/request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.detail || 'Could not send request'); }
+  return res.json();
+}
+async function apiGetMyTripRequests() {
+  const token = getToken();
+  if (!token) return [];
+  try {
+    const r = await fetch(BACKEND_URL + '/api/trips/my', { headers: { 'Authorization': `Bearer ${token}` } });
+    return r.ok ? r.json() : [];
+  } catch { return []; }
+}
+async function apiUpdateTripStatus(tripId, status) {
+  const token = getToken();
+  if (!token) throw new Error('Login required');
+  const res = await fetch(BACKEND_URL + `/api/trips/${tripId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.detail || 'Could not update status'); }
+  return res.json();
+}
+async function apiGetFavorites() {
+  const token = getToken();
+  if (!token) return [];
+  try {
+    const r = await fetch(BACKEND_URL + '/api/favorites/my', { headers: { 'Authorization': `Bearer ${token}` } });
+    return r.ok ? r.json() : [];
+  } catch { return []; }
+}
+async function apiAddFavorite(payload) {
+  const token = getToken();
+  if (!token) throw new Error('Login required');
+  const res = await fetch(BACKEND_URL + '/api/favorites/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.detail || 'Could not add favorite'); }
+  return res.json();
+}
+async function apiRemoveFavorite(favoriteId) {
+  const token = getToken();
+  if (!token) throw new Error('Login required');
+  const res = await fetch(BACKEND_URL + `/api/favorites/${favoriteId}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!res.ok && res.status !== 204) throw new Error('Could not remove favorite');
 }
 
 // ── Navbar auth UI ────────────────────────────────────────────────────────────
 function updateNavAuth() {
-  const area = document.getElementById('nav-auth-area');
-  if (!area) return;
-  const user = getUser();
-  if (user) {
+    const area = document.getElementById('nav-auth-area');
+
+    if (!area) {
+        console.error('[AUTH] #nav-auth-area not found');
+        return;
+    }
+
+    const user = getUser();
+
+    // ========================================================
+    // LOGGED IN
+    // ========================================================
+
+    if (user) {
+
+        const isPlanner =
+            user.role === 'planner' ||
+            user.role === 'admin';
+
+        const firstName =
+            user.name
+                ? user.name.split(' ')[0]
+                : 'User';
+
+        area.innerHTML = `
+            <div class="nav-user-menu">
+
+                <span class="nav-user-name">
+                    <i class="fa-solid fa-circle-user"></i>
+                    ${escHtml(firstName)}
+                </span>
+
+                <button
+                    type="button"
+                    class="nav-my-trips-btn"
+                    id="nav-my-trips">
+
+                    <i class="fa-solid fa-bookmark"></i>
+                    My Trips
+
+                </button>
+
+                ${
+                    isPlanner
+                        ? `
+                        <button
+                            type="button"
+                            class="nav-dash-btn"
+                            id="nav-dashboard">
+
+                            <i class="fa-solid fa-briefcase"></i>
+                            Dashboard
+
+                        </button>
+                        `
+                        : `
+                        <button
+                            type="button"
+                            class="nav-planner-btn"
+                            id="nav-become-planner">
+
+                            <i class="fa-solid fa-user-tie"></i>
+                            Become a Planner
+
+                        </button>
+                        `
+                }
+
+                <button
+                    type="button"
+                    class="nav-logout-btn"
+                    id="nav-logout">
+
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                    Sign out
+
+                </button>
+
+            </div>
+        `;
+
+        document
+            .getElementById('nav-logout')
+            ?.addEventListener('click', () => {
+
+                clearAuth();
+
+                favoritesCache = null;
+                currentTripData = null;
+                selectedFlight = null;
+                selectedHotel = null;
+
+                updateNavAuth();
+
+                showToast('Signed out successfully.');
+            });
+
+        document
+            .getElementById('nav-my-trips')
+            ?.addEventListener(
+                'click',
+                openMyTripsModal
+            );
+
+        document
+            .getElementById('nav-dashboard')
+            ?.addEventListener(
+                'click',
+                () => openDashboardModal()
+            );
+
+        document
+            .getElementById('nav-become-planner')
+            ?.addEventListener(
+                'click',
+                () => openDashboardModal()
+            );
+
+        return;
+    }
+
+    // ========================================================
+    // LOGGED OUT
+    // ========================================================
+
     area.innerHTML = `
-      <div class="nav-user-menu">
-        <span class="nav-user-name"><i class="fa-solid fa-circle-user"></i> ${user.name.split(' ')[0]}</span>
-        <button class="nav-my-trips-btn" id="nav-my-trips"><i class="fa-solid fa-bookmark"></i> My Trips</button>
-        <button class="nav-logout-btn" id="nav-logout"><i class="fa-solid fa-right-from-bracket"></i> Sign out</button>
-      </div>`;
-    document.getElementById('nav-logout').addEventListener('click', () => { clearAuth(); updateNavAuth(); showToast('Signed out successfully.'); });
-    document.getElementById('nav-my-trips').addEventListener('click', openMyTripsModal);
-  } else {
-    area.innerHTML = `<button class="nav-signin-btn" id="nav-signin-btn"><i class="fa-solid fa-right-to-bracket"></i> Sign in</button>`;
-    document.getElementById('nav-signin-btn').addEventListener('click', () => openAuthModal('login'));
-  }
+        <button
+            type="button"
+            class="nav-signin-btn"
+            id="nav-signin-btn">
+
+            <i class="fa-solid fa-right-to-bracket"></i>
+            Sign in
+
+        </button>
+    `;
+
+    const signInBtn =
+        document.getElementById('nav-signin-btn');
+
+    if (signInBtn) {
+
+        signInBtn.addEventListener(
+            'click',
+            function (e) {
+
+                e.preventDefault();
+                e.stopPropagation();
+
+                console.log(
+                    '[AUTH] Sign in button clicked'
+                );
+
+                openAuthModal('login');
+            }
+        );
+    }
 }
 
 // ── Auth Modal ────────────────────────────────────────────────────────────────
 let _authMode = 'login';
+
 function openAuthModal(mode = 'login') {
-  _authMode = mode;
-  const modal = document.getElementById('auth-modal');
-  if (!modal) return;
-  modal.classList.remove('hidden');
-  document.getElementById('auth-modal-title').textContent = mode === 'login' ? 'Welcome back' : 'Create account';
-  document.getElementById('auth-name-field').style.display = mode === 'signup' ? 'flex' : 'none';
-  document.getElementById('auth-role-field').style.display = mode === 'signup' ? 'flex' : 'none';
-  document.getElementById('auth-submit-btn').textContent = mode === 'login' ? 'Sign in' : 'Create account';
-  document.getElementById('auth-switch-text').innerHTML = mode === 'login'
-    ? `Don't have an account? <a href="#" id="auth-switch-link">Sign up</a>`
-    : `Already have an account? <a href="#" id="auth-switch-link">Sign in</a>`;
-  document.getElementById('auth-error').textContent = '';
-  // Re-wire switch link
-  document.getElementById('auth-switch-link').addEventListener('click', (e) => {
-    e.preventDefault(); openAuthModal(_authMode === 'login' ? 'signup' : 'login');
-  });
-  document.getElementById('auth-email').focus();
+    _authMode = mode === 'signup' ? 'signup' : 'login';
+
+    const modal = document.getElementById('auth-modal');
+    const title = document.getElementById('auth-modal-title');
+    const nameField = document.getElementById('auth-name-field');
+    const roleField = document.getElementById('auth-role-field');
+    const submitBtn = document.getElementById('auth-submit-btn');
+    const switchText = document.getElementById('auth-switch-text');
+    const errorEl = document.getElementById('auth-error');
+
+    if (!modal) {
+        console.error('Auth modal not found');
+        return;
+    }
+
+    // Show modal
+    modal.classList.remove('hidden');
+
+    // Title
+    if (title) {
+        title.textContent =
+            _authMode === 'login'
+                ? 'Welcome back'
+                : 'Create account';
+    }
+
+    // Show/hide signup-only fields
+    if (nameField) {
+        nameField.style.display =
+            _authMode === 'signup' ? 'flex' : 'none';
+    }
+
+    if (roleField) {
+        roleField.style.display =
+            _authMode === 'signup' ? 'flex' : 'none';
+    }
+
+    // Name is required only during signup
+    const nameInput = document.getElementById('auth-name');
+
+    if (nameInput) {
+        nameInput.required = _authMode === 'signup';
+    }
+
+    // Submit button
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML =
+            _authMode === 'login'
+                ? '<i class="fa-solid fa-right-to-bracket"></i> Sign in'
+                : '<i class="fa-solid fa-user-plus"></i> Create account';
+    }
+
+    // IMPORTANT:
+    // Sign up / Sign in link is dynamically generated.
+    if (switchText) {
+        if (_authMode === 'login') {
+            switchText.innerHTML = `
+                Don't have an account?
+                <a href="#" id="auth-switch-link" data-mode="signup">
+                    Sign up
+                </a>
+            `;
+        } else {
+            switchText.innerHTML = `
+                Already have an account?
+                <a href="#" id="auth-switch-link" data-mode="login">
+                    Sign in
+                </a>
+            `;
+        }
+    }
+
+    // Clear previous error
+    if (errorEl) {
+        errorEl.textContent = '';
+    }
+
+    // Focus
+    setTimeout(() => {
+        if (_authMode === 'signup' && nameInput) {
+            nameInput.focus();
+        } else {
+            document.getElementById('auth-email')?.focus();
+        }
+    }, 100);
 }
+
+
 function closeAuthModal() {
-  const modal = document.getElementById('auth-modal');
-  if (modal) modal.classList.add('hidden');
+
+    const modal =
+        document.getElementById(
+            'auth-modal'
+        );
+
+    if (modal) {
+        modal.classList.add('hidden');
+    }
 }
+
+
 async function handleAuthSubmit(e) {
-  e.preventDefault();
-  const errEl  = document.getElementById('auth-error');
-  const btnEl  = document.getElementById('auth-submit-btn');
-  const email  = document.getElementById('auth-email').value.trim();
-  const password = document.getElementById('auth-password').value;
-  errEl.textContent = '';
-  btnEl.disabled = true;
-  btnEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Please wait...';
-  try {
-    let result;
-    if (_authMode === 'login') {
-      result = await apiLogin(email, password);
-    } else {
-      const name = document.getElementById('auth-name').value.trim();
-      const role = document.getElementById('auth-role').value;
-      result = await apiSignup(name, email, password, role);
+
+    e.preventDefault();
+
+    console.log(
+        `[AUTH] Form submitted: ${_authMode}`
+    );
+
+    const errorEl =
+        document.getElementById(
+            'auth-error'
+        );
+
+    const btnEl =
+        document.getElementById(
+            'auth-submit-btn'
+        );
+
+    const emailInput =
+        document.getElementById(
+            'auth-email'
+        );
+
+    const passwordInput =
+        document.getElementById(
+            'auth-password'
+        );
+
+    if (!emailInput || !passwordInput) {
+
+        console.error(
+            '[AUTH] Email/password field missing'
+        );
+
+        if (errorEl) {
+            errorEl.textContent =
+                'Authentication form is not configured correctly.';
+        }
+
+        return;
     }
-    setAuth(result);
-    updateNavAuth();
-    closeAuthModal();
-    showToast(`Welcome, ${result.user.name.split(' ')[0]}! 👋`);
-    // If a pending action was queued, retry it
-    if (window._pendingAfterLogin) { 
-        const pending = window._pendingAfterLogin;
-        window._pendingAfterLogin = null;
-        pending(); 
+
+    const email =
+        emailInput.value.trim();
+
+    const password =
+        passwordInput.value;
+
+    if (!email || !password) {
+
+        if (errorEl) {
+            errorEl.textContent =
+                'Please enter your email and password.';
+        }
+
+        return;
     }
-  } catch (err) {
-    errEl.textContent = err.message;
-  } finally {
-    btnEl.disabled = false;
-    btnEl.textContent = _authMode === 'login' ? 'Sign in' : 'Create account';
-  }
+
+    if (errorEl) {
+        errorEl.textContent = '';
+    }
+
+    if (btnEl) {
+
+        btnEl.disabled = true;
+
+        btnEl.innerHTML =
+            '<i class="fa-solid fa-circle-notch fa-spin"></i> Please wait...';
+    }
+
+    try {
+
+        let result;
+
+        if (_authMode === 'login') {
+
+            console.log(
+                '[AUTH] Calling POST /api/auth/login'
+            );
+
+            result =
+                await apiLogin(
+                    email,
+                    password
+                );
+
+        } else {
+
+            const nameInput =
+                document.getElementById(
+                    'auth-name'
+                );
+
+            const roleInput =
+                document.getElementById(
+                    'auth-role'
+                );
+
+            const name =
+                nameInput
+                    ? nameInput.value.trim()
+                    : '';
+
+            const role =
+                roleInput
+                    ? roleInput.value
+                    : 'traveler';
+
+            if (!name) {
+
+                if (errorEl) {
+                    errorEl.textContent =
+                        'Please enter your name.';
+                }
+
+                return;
+            }
+
+            console.log(
+                '[AUTH] Calling POST /api/auth/signup'
+            );
+
+            result =
+                await apiSignup(
+                    name,
+                    email,
+                    password,
+                    role
+                );
+        }
+
+        console.log(
+            '[AUTH] Authentication successful',
+            result
+        );
+
+        setAuth(result);
+
+        updateNavAuth();
+
+        closeAuthModal();
+
+        const firstName =
+            result?.user?.name
+                ? result.user.name.split(' ')[0]
+                : 'there';
+
+        showToast(
+            `Welcome, ${firstName}! 👋`
+        );
+
+        if (window._pendingAfterLogin) {
+
+            const pending =
+                window._pendingAfterLogin;
+
+            window._pendingAfterLogin = null;
+
+            setTimeout(() => {
+
+                try {
+                    pending();
+                } catch (err) {
+
+                    console.error(
+                        '[AUTH] Pending action failed:',
+                        err
+                    );
+                }
+
+            }, 100);
+        }
+
+    } catch (err) {
+
+        console.error(
+            '[AUTH] Authentication error:',
+            err
+        );
+
+        if (errorEl) {
+            errorEl.textContent =
+                err.message ||
+                'Authentication failed.';
+        }
+
+    } finally {
+
+        if (btnEl) {
+
+            btnEl.disabled = false;
+
+            btnEl.textContent =
+                _authMode === 'login'
+                    ? 'Sign in'
+                    : 'Create account';
+        }
+    }
 }
 
 // ── Save itinerary ────────────────────────────────────────────────────────────
@@ -1442,10 +2072,18 @@ async function handleSaveItinerary() {
   const btn = document.getElementById('btn-save-itinerary');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…'; }
   try {
+    const sDate = document.getElementById('search-date')?.value || null;
+    const eDate = document.getElementById('search-return')?.value || null;
+    const travelers = parseInt(document.getElementById('search-travelers')?.value || 1);
+    const budget = document.getElementById('search-budget')?.value || null;
+
     await apiSaveAITrip({
       destination_name: window._lastDestination || 'Unknown',
       generated_itinerary: window._lastItinerary || '',
-      travelers_count: 1,
+      start_date: sDate,
+      end_date: eDate,
+      travelers_count: travelers,
+      budget: budget,
       preferences: {},
     });
     showToast('Itinerary saved to your account! 🎉');
@@ -1458,26 +2096,43 @@ async function handleSaveItinerary() {
 
 // ── My Trips Modal ────────────────────────────────────────────────────────────
 async function openMyTripsModal() {
+  if (!getToken()) {
+    openAuthModal('login');
+    showToast('Sign in to view your saved trips', 'error');
+    return;
+  }
   const modal = document.getElementById('my-trips-modal');
   if (!modal) return;
   modal.classList.remove('hidden');
+  switchMyTripsTab('mt-ai-trips');
   const list = document.getElementById('my-trips-list');
   list.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
   const trips = await apiGetMyTrips();
   if (!trips.length) {
-    list.innerHTML = '<p class="empty-state">No saved trips yet. Search for a destination and save your itinerary!</p>';
+    list.innerHTML = '<p class="empty-state"><i class="fa-solid fa-suitcase-rolling" style="font-size:2rem;display:block;margin-bottom:12px;opacity:.3"></i>No saved trips yet.<br>Search for a destination, generate an itinerary, and tap <strong>Save Trip</strong>.</p>';
     return;
   }
   list.innerHTML = trips.map(t => {
     const date = new Date(t.created_at).toLocaleDateString('en-IN', {day: 'numeric', month: 'short', year: 'numeric'});
-    const preview = (t.generated_itinerary || '').substring(0, 180).replace(/#+/g, '').trim();
+    const preview = (t.generated_itinerary || '').substring(0, 200).replace(/#+\s*/g, '').replace(/\*\*/g, '').trim();
+    const budgetHtml = t.budget ? `<span style="margin-left:auto;font-weight:700;color:var(--brand)">₹${Number(t.budget).toLocaleString('en-IN')}</span>` : '';
     return `
       <div class="saved-trip-card">
         <div class="stc-header">
           <span class="stc-dest"><i class="fa-solid fa-location-dot"></i> ${t.destination_name || 'Unknown'}</span>
+          ${budgetHtml}
           <span class="stc-date">${date}</span>
         </div>
         <p class="stc-preview">${preview}…</p>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="request-action-btn" onclick="expandItinerary(${t.id}, this)" data-trip-id="${t.id}">
+            <i class="fa-solid fa-eye"></i> View
+          </button>
+          <button class="request-action-btn danger" onclick="deleteAITrip(${t.id}, this)">
+            <i class="fa-solid fa-trash"></i> Delete
+          </button>
+        </div>
+        <div class="expanded-itinerary" id="exp-${t.id}" style="display:none;margin-top:12px;padding:14px;background:var(--surface-2);border-radius:10px;font-size:.85rem;line-height:1.7;max-height:400px;overflow-y:auto"></div>
       </div>`;
   }).join('');
 }
@@ -1486,47 +2141,905 @@ function closeMyTripsModal() {
   if (modal) modal.classList.add('hidden');
 }
 
-// ── Destinations Section ──────────────────────────────────────────────────────
-async function loadDestinationsSection() {
-  const wrap = document.getElementById('destinations-section-cards');
-  if (!wrap) return;
-  wrap.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
-  const dests = await apiGetDestinations();
-  if (!dests.length) { wrap.innerHTML = ''; return; }
-  wrap.innerHTML = dests.map(d => `
-    <div class="dest-card">
+// Expand an AI trip's itinerary inline in My Trips modal
+function expandItinerary(tripId, btn) {
+  const expDiv = document.getElementById(`exp-${tripId}`);
+  if (!expDiv) return;
+  if (expDiv.style.display === 'block') {
+    expDiv.style.display = 'none';
+    btn.innerHTML = '<i class="fa-solid fa-eye"></i> View';
+    return;
+  }
+  // Find the trip from already-rendered data
+  btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+  apiGetMyTrips().then(trips => {
+    const trip = trips.find(t => t.id === tripId);
+    if (trip && trip.generated_itinerary) {
+      expDiv.innerHTML = marked.parse(trip.generated_itinerary);
+      expDiv.style.display = 'block';
+      btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Hide';
+    } else {
+      btn.innerHTML = '<i class="fa-solid fa-eye"></i> View';
+    }
+  }).catch(() => { btn.innerHTML = '<i class="fa-solid fa-eye"></i> View'; });
+}
+
+// Delete an AI trip from the backend
+async function deleteAITrip(tripId, btn) {
+  if (!confirm('Delete this saved itinerary?')) return;
+  const token = getToken();
+  if (!token) { showToast('Sign in required', 'error'); return; }
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+  try {
+    const res = await fetch(BACKEND_URL + `/api/ai-trips/${tripId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (res.ok || res.status === 204) {
+      const card = btn.closest('.saved-trip-card');
+      if (card) card.remove();
+      showToast('Itinerary deleted.');
+    } else {
+      throw new Error('Delete failed');
+    }
+  } catch (err) {
+    showToast(err.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-trash"></i> Delete';
+  }
+}
+
+// ── Favorites cache (traveler_id → set of "type:id") ───────────────────────────
+let favoritesCache = null;
+async function ensureFavoritesLoaded() {
+  if (!getToken()) { favoritesCache = []; return favoritesCache; }
+  if (favoritesCache === null) favoritesCache = await apiGetFavorites();
+  return favoritesCache;
+}
+function findFavorite(type, id) {
+  if (!favoritesCache) return null;
+  const key = `${type}_id`;
+  return favoritesCache.find(f => f[key] === id) || null;
+}
+async function toggleFavorite(type, id, btnEl) {
+  if (!getToken()) {
+    openAuthModal('login');
+    showToast('Sign in to save favorites', 'error');
+    return;
+  }
+  await ensureFavoritesLoaded();
+  const existing = findFavorite(type, id);
+  try {
+    if (existing) {
+      await apiRemoveFavorite(existing.id);
+      favoritesCache = favoritesCache.filter(f => f.id !== existing.id);
+      if (btnEl) btnEl.classList.remove('active');
+      showToast('Removed from favorites');
+    } else {
+      const payload = {};
+      payload[`${type}_id`] = id;
+      const fav = await apiAddFavorite(payload);
+      favoritesCache.push(fav);
+      if (btnEl) btnEl.classList.add('active');
+      showToast('Added to favorites ❤️');
+    }
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+function favHeartHtml(type, id) {
+  const active = findFavorite(type, id) ? ' active' : '';
+  return `<button type="button" class="card-fav-btn${active}" data-fav-type="${type}" data-fav-id="${id}" title="Save to favorites"><i class="fa-solid fa-heart"></i></button>`;
+}
+function wireFavHearts(container) {
+  container.querySelectorAll('.card-fav-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const type = btn.getAttribute('data-fav-type');
+      const id = parseInt(btn.getAttribute('data-fav-id'));
+      toggleFavorite(type, id, btn);
+    });
+  });
+}
+
+// ── Card renderers (reused by landing preview + browse modal) ──────────────────
+function destCardHtml(d) {
+  return `
+    <div class="dest-card" data-dest-id="${d.id}">
+      ${favHeartHtml('destination', d.id)}
       <div class="dest-card-img" style="background-image:url('${d.image || ''}')">
         <span class="dest-badge">${d.best_time_to_visit || 'Year-round'}</span>
       </div>
       <div class="dest-card-body">
-        <h3 class="dest-card-name">${d.name}</h3>
-        <p class="dest-card-state"><i class="fa-solid fa-location-dot"></i> ${d.state || d.country}</p>
+        <h3 class="dest-card-name">${escHtml(d.name)}</h3>
+        <p class="dest-card-state"><i class="fa-solid fa-location-dot"></i> ${escHtml(d.state || d.country)}</p>
         ${d.average_budget ? `<div class="dest-card-budget"><i class="fa-solid fa-indian-rupee-sign"></i> Avg. \u20B9${Number(d.average_budget).toLocaleString('en-IN')}</div>` : ''}
       </div>
-    </div>`).join('');
+    </div>`;
 }
-
-// ── Planners Section ──────────────────────────────────────────────────────────
-async function loadPlannersSection() {
-  const wrap = document.getElementById('planners-section-cards');
-  if (!wrap) return;
-  wrap.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
-  const planners = await apiGetPlanners();
-  if (!planners.length) { wrap.innerHTML = ''; return; }
-  wrap.innerHTML = planners.map(p => `
-    <div class="planner-card">
+function plannerCardHtml(p) {
+  return `
+    <div class="planner-card" data-planner-id="${p.id}">
+      ${favHeartHtml('planner', p.user_id)}
       <div class="planner-card-avatar">${(p.name || 'P').charAt(0).toUpperCase()}</div>
       <div class="planner-card-body">
-        <h3 class="planner-card-name">${p.name}</h3>
-        <p class="planner-location"><i class="fa-solid fa-location-dot"></i> ${p.location || 'India'}</p>
+        <h3 class="planner-card-name">${escHtml(p.name || 'Planner')}</h3>
+        <p class="planner-location"><i class="fa-solid fa-location-dot"></i> ${escHtml(p.location || 'India')}</p>
         <div class="planner-meta">
           <span class="pm-rating"><i class="fa-solid fa-star"></i> ${Number(p.rating || 0).toFixed(1)}</span>
           <span><i class="fa-solid fa-briefcase"></i> ${p.years_experience} yrs exp</span>
           <span><i class="fa-solid fa-indian-rupee-sign"></i> from \u20B9${Number(p.starting_price).toLocaleString('en-IN')}</span>
         </div>
-        ${p.bio ? `<p class="planner-bio">${p.bio.substring(0, 110)}…</p>` : ''}
+        ${p.bio ? `<p class="planner-bio">${escHtml(p.bio.substring(0, 110))}…</p>` : ''}
       </div>
-    </div>`).join('');
+    </div>`;
+}
+function packageCardHtml(pkg) {
+  return `
+    <div class="package-card" data-package-id="${pkg.id}">
+      ${favHeartHtml('package', pkg.id)}
+      <div class="package-card-top">
+        <div class="package-card-title">${escHtml(pkg.title)}</div>
+        <div class="package-card-desc">${escHtml((pkg.description || 'A curated travel experience.').substring(0, 100))}</div>
+        <div class="package-card-meta">
+          <span><i class="fa-solid fa-calendar-days"></i> ${pkg.duration_days} days</span>
+          <span><i class="fa-solid fa-users"></i> up to ${pkg.max_travelers}</span>
+          ${pkg.travel_style ? `<span><i class="fa-solid fa-tag"></i> ${escHtml(pkg.travel_style)}</span>` : ''}
+        </div>
+      </div>
+      <div class="package-card-bottom">
+        <div class="package-card-price">₹${Number(pkg.price).toLocaleString('en-IN')} <small>total</small></div>
+        <span class="detail-btn-outline" style="padding:7px 14px;font-size:.8rem">View <i class="fa-solid fa-arrow-right"></i></span>
+      </div>
+    </div>`;
+}
+
+// ── Destinations Section (landing preview) ─────────────────────────────────────
+async function loadDestinationsSection() {
+  const wrap = document.getElementById('destinations-section-cards');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  await ensureFavoritesLoaded();
+  const dests = await apiGetDestinations();
+  window._allDestinations = dests;
+  if (!dests.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = dests.slice(0, 6).map(destCardHtml).join('');
+  wireFavHearts(wrap);
+  wrap.querySelectorAll('.dest-card').forEach(card => {
+    card.addEventListener('click', () => openDestinationModal(parseInt(card.getAttribute('data-dest-id'))));
+  });
+}
+
+// ── Planners Section (landing preview) ──────────────────────────────────────────
+async function loadPlannersSection() {
+  const wrap = document.getElementById('planners-section-cards');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  await ensureFavoritesLoaded();
+  const planners = await apiGetPlanners();
+  window._allPlanners = planners;
+  if (!planners.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = planners.slice(0, 6).map(plannerCardHtml).join('');
+  wireFavHearts(wrap);
+  wrap.querySelectorAll('.planner-card').forEach(card => {
+    card.addEventListener('click', () => openPlannerModal(parseInt(card.getAttribute('data-planner-id'))));
+  });
+}
+
+// ── Packages Section (landing preview) ──────────────────────────────────────────
+async function loadPackagesSection() {
+  const wrap = document.getElementById('packages-section-cards');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  await ensureFavoritesLoaded();
+  const pkgs = await apiGetPackages();
+  window._allPackages = pkgs;
+  if (!pkgs.length) { wrap.innerHTML = '<p class="empty-state">No packages published yet. Check back soon!</p>'; return; }
+  wrap.innerHTML = pkgs.slice(0, 6).map(packageCardHtml).join('');
+  wireFavHearts(wrap);
+  wrap.querySelectorAll('.package-card').forEach(card => {
+    card.addEventListener('click', () => openPackageModal(parseInt(card.getAttribute('data-package-id'))));
+  });
+}
+
+/* ============================================================
+   BROWSE ("View All") MODAL
+   ============================================================ */
+async function openBrowseModal(type) {
+
+    console.log('[BROWSE] Opening:', type);
+
+    const modal = document.getElementById('browse-modal');
+    const title = document.getElementById('browse-modal-title');
+    const grid = document.getElementById('browse-modal-grid');
+    const filterBar = document.getElementById('browse-filter-bar');
+    const filterSel = document.getElementById('browse-dest-filter');
+
+    if (!modal) {
+        console.error('[BROWSE] #browse-modal not found');
+        return;
+    }
+
+    if (!title) {
+        console.error('[BROWSE] #browse-modal-title not found');
+        return;
+    }
+
+    if (!grid) {
+        console.error('[BROWSE] #browse-modal-grid not found');
+        return;
+    }
+
+    modal.classList.remove('hidden');
+
+    grid.innerHTML = `
+        <div class="dest-loading">
+            <i class="fa-solid fa-circle-notch fa-spin"></i>
+            Loading...
+        </div>
+    `;
+
+    try {
+
+        await ensureFavoritesLoaded();
+
+        if (type === 'destinations') {
+
+            title.innerHTML =
+                '<i class="fa-solid fa-map-location-dot"></i> All Destinations';
+
+            if (filterBar) {
+                filterBar.classList.add('hidden');
+            }
+
+            const dests =
+                window._allDestinations &&
+                window._allDestinations.length
+                    ? window._allDestinations
+                    : await apiGetDestinations();
+
+            grid.innerHTML =
+                dests.length
+                    ? dests.map(destCardHtml).join('')
+                    : '<p class="empty-state">No destinations available.</p>';
+
+            wireFavHearts(grid);
+
+            grid.querySelectorAll('.dest-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    openDestinationModal(
+                        parseInt(
+                            card.getAttribute('data-dest-id')
+                        )
+                    );
+                });
+            });
+
+        } else if (type === 'planners') {
+
+            title.innerHTML =
+                '<i class="fa-solid fa-user-tie"></i> All Planners';
+
+            if (filterBar) {
+                filterBar.classList.add('hidden');
+            }
+
+            const planners =
+                window._allPlanners &&
+                window._allPlanners.length
+                    ? window._allPlanners
+                    : await apiGetPlanners();
+
+            grid.innerHTML =
+                planners.length
+                    ? planners.map(plannerCardHtml).join('')
+                    : '<p class="empty-state">No planners available.</p>';
+
+            wireFavHearts(grid);
+
+            grid.querySelectorAll('.planner-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    openPlannerModal(
+                        parseInt(
+                            card.getAttribute('data-planner-id')
+                        )
+                    );
+                });
+            });
+
+        } else if (type === 'packages') {
+
+            title.innerHTML =
+                '<i class="fa-solid fa-suitcase-rolling"></i> All Packages';
+
+            if (filterBar) {
+                filterBar.classList.remove('hidden');
+            }
+
+            const dests =
+                window._allDestinations &&
+                window._allDestinations.length
+                    ? window._allDestinations
+                    : await apiGetDestinations();
+
+            if (filterSel) {
+
+                filterSel.innerHTML =
+                    '<option value="">All destinations</option>' +
+                    dests.map(d =>
+                        `<option value="${d.id}">
+                            ${escHtml(d.name)}
+                        </option>`
+                    ).join('');
+
+                filterSel.onchange = async () => {
+
+                    grid.innerHTML = `
+                        <div class="dest-loading">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i>
+                            Loading packages...
+                        </div>
+                    `;
+
+                    const pkgs =
+                        await apiGetPackages(
+                            filterSel.value || undefined
+                        );
+
+                    renderPackageGrid(pkgs, grid);
+                };
+            }
+
+            const pkgs =
+                await apiGetPackages();
+
+            renderPackageGrid(pkgs, grid);
+        }
+
+    } catch (error) {
+
+        console.error(
+            '[BROWSE] Failed:',
+            error
+        );
+
+        grid.innerHTML = `
+            <div class="empty-state">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <p>Unable to load this section.</p>
+                <small>${escHtml(error.message || 'Unknown error')}</small>
+            </div>
+        `;
+    }
+}
+function closeBrowseModal() { document.getElementById('browse-modal')?.classList.add('hidden'); }
+
+/* ============================================================
+   DESTINATION DETAIL MODAL
+   ============================================================ */
+async function openDestinationModal(id) {
+  const modal = document.getElementById('destination-modal');
+  const body  = document.getElementById('destination-modal-body');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  body.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  try {
+    const d = await apiGetDestination(id);
+    const pkgs = await apiGetPackages(id);
+    body.innerHTML = `
+      <div class="detail-hero" style="background-image:url('${d.image || ''}')">
+        <div class="detail-hero-overlay"></div>
+        <div class="detail-hero-title">${escHtml(d.name)}</div>
+      </div>
+      <div class="detail-meta-row">
+        <span class="detail-meta-chip"><i class="fa-solid fa-location-dot"></i> ${escHtml(d.state || '')}${d.state ? ', ' : ''}${escHtml(d.country || '')}</span>
+        ${d.best_time_to_visit ? `<span class="detail-meta-chip"><i class="fa-solid fa-calendar"></i> Best time: ${escHtml(d.best_time_to_visit)}</span>` : ''}
+        ${d.average_budget ? `<span class="detail-meta-chip"><i class="fa-solid fa-indian-rupee-sign"></i> Avg. budget ₹${Number(d.average_budget).toLocaleString('en-IN')}</span>` : ''}
+      </div>
+      <p class="detail-desc">${escHtml(d.description || 'A wonderful destination waiting to be explored.')}</p>
+      <div class="detail-actions">
+        ${favHeartHtml('destination', d.id)}
+      </div>
+      <div class="detail-section-heading"><i class="fa-solid fa-suitcase-rolling"></i> Packages for ${escHtml(d.name)}</div>
+      <div class="cards-grid" id="dest-modal-packages">
+        ${pkgs.length ? pkgs.map(packageCardHtml).join('') : '<p class="empty-state">No packages published for this destination yet.</p>'}
+      </div>
+    `;
+    wireFavHearts(body);
+    body.querySelectorAll('.package-card').forEach(card => {
+      card.addEventListener('click', () => { closeDestinationModal(); openPackageModal(parseInt(card.getAttribute('data-package-id'))); });
+    });
+  } catch (err) {
+    body.innerHTML = `<p class="empty-state">${escHtml(err.message)}</p>`;
+  }
+}
+function closeDestinationModal() { document.getElementById('destination-modal')?.classList.add('hidden'); }
+
+/* ============================================================
+   PLANNER DETAIL MODAL
+   ============================================================ */
+async function openPlannerModal(id) {
+  const modal = document.getElementById('planner-modal');
+  const body  = document.getElementById('planner-modal-body');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  body.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  try {
+    const p = await apiGetPlanner(id);
+    const [pkgs, reviews] = await Promise.all([
+      apiGetPackages(),
+      apiGetPlannerReviews(p.user_id),
+    ]);
+    const plannerPkgs = pkgs.filter(pk => pk.planner_id === p.id);
+
+    const reviewsHtml = reviews.length
+      ? reviews.map(r => `
+          <div class="review-item">
+            <div class="review-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</div>
+            ${r.review_text ? `<div class="review-text">${escHtml(r.review_text)}</div>` : ''}
+            <div class="review-date">${new Date(r.created_at).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'})}</div>
+          </div>`).join('')
+      : '<p class="empty-state">No reviews yet. Be the first to review this planner.</p>';
+
+    body.innerHTML = `
+      <div class="planner-detail-header">
+        <div class="planner-avatar-lg">${(p.name || 'P').charAt(0).toUpperCase()}</div>
+        <div>
+          <div class="planner-detail-name">${escHtml(p.name || 'Planner')}</div>
+          <div class="planner-detail-rating"><i class="fa-solid fa-star"></i> ${Number(p.rating || 0).toFixed(1)} · ${p.total_reviews} review${p.total_reviews !== 1 ? 's' : ''}</div>
+        </div>
+      </div>
+      <div class="detail-meta-row">
+        <span class="detail-meta-chip"><i class="fa-solid fa-location-dot"></i> ${escHtml(p.location || 'India')}</span>
+        <span class="detail-meta-chip"><i class="fa-solid fa-briefcase"></i> ${p.years_experience} yrs experience</span>
+        <span class="detail-meta-chip"><i class="fa-solid fa-indian-rupee-sign"></i> from ₹${Number(p.starting_price).toLocaleString('en-IN')}</span>
+        <span class="detail-meta-chip"><i class="fa-solid fa-circle-check"></i> ${escHtml(p.verification_status)}</span>
+      </div>
+      <p class="detail-desc">${escHtml(p.bio || 'This planner has not added a bio yet.')}</p>
+      <div class="detail-actions">
+        <button class="detail-btn-primary" id="planner-request-btn"><i class="fa-solid fa-paper-plane"></i> Request a Trip</button>
+        <button class="detail-btn-outline" id="planner-review-btn"><i class="fa-solid fa-star"></i> Leave a Review</button>
+        ${favHeartHtml('planner', p.user_id)}
+      </div>
+      <div class="detail-section-heading"><i class="fa-solid fa-suitcase-rolling"></i> Packages by ${escHtml(p.name || 'this planner')}</div>
+      <div class="cards-grid" id="planner-modal-packages" style="margin-bottom:24px">
+        ${plannerPkgs.length ? plannerPkgs.map(packageCardHtml).join('') : '<p class="empty-state">No packages published yet.</p>'}
+      </div>
+      <div class="detail-section-heading"><i class="fa-solid fa-comments"></i> Traveler Reviews</div>
+      <div id="planner-modal-reviews">${reviewsHtml}</div>
+    `;
+    wireFavHearts(body);
+    body.querySelectorAll('.package-card').forEach(card => {
+      card.addEventListener('click', () => { closePlannerModal(); openPackageModal(parseInt(card.getAttribute('data-package-id'))); });
+    });
+    document.getElementById('planner-request-btn').addEventListener('click', () => openRequestModal({ plannerId: p.user_id }));
+    document.getElementById('planner-review-btn').addEventListener('click', () => openReviewModal(p.user_id));
+  } catch (err) {
+    body.innerHTML = `<p class="empty-state">${escHtml(err.message)}</p>`;
+  }
+}
+function closePlannerModal() { document.getElementById('planner-modal')?.classList.add('hidden'); }
+
+/* ============================================================
+   PACKAGE DETAIL MODAL
+   ============================================================ */
+async function openPackageModal(id) {
+  const modal = document.getElementById('package-modal');
+  const body  = document.getElementById('package-modal-body');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  body.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  try {
+    const pkg = await apiGetPackage(id);
+    // TravelPackage.planner_id is the PlannerProfile.id — resolve the
+    // planner's User.id too, since trip requests/reviews key off User.id.
+    const plannerProfile = await apiGetPlanner(pkg.planner_id).catch(() => null);
+    const plannerUserId = plannerProfile ? plannerProfile.user_id : null;
+    const days = (pkg.itinerary_days || []).slice().sort((a, b) => a.day_number - b.day_number);
+    const daysHtml = days.length
+      ? days.map(day => `
+          <div class="itinerary-day-item">
+            <div class="itinerary-day-num">${day.day_number}</div>
+            <div>
+              <div class="itinerary-day-title">${escHtml(day.title)}</div>
+              ${day.description ? `<div class="itinerary-day-desc">${escHtml(day.description)}</div>` : ''}
+              ${(day.activities && day.activities.length) ? `<div class="itinerary-day-activities">${day.activities.map(a => `<span>${escHtml(a)}</span>`).join('')}</div>` : ''}
+            </div>
+          </div>`).join('')
+      : '<p class="empty-state">Detailed day-by-day itinerary coming soon.</p>';
+
+    body.innerHTML = `
+      <div class="detail-hero-title" style="color:var(--text-1);font-size:1.5rem;margin-bottom:8px">${escHtml(pkg.title)}</div>
+      <div class="detail-meta-row">
+        <span class="detail-meta-chip"><i class="fa-solid fa-calendar-days"></i> ${pkg.duration_days} days</span>
+        <span class="detail-meta-chip"><i class="fa-solid fa-users"></i> up to ${pkg.max_travelers} travelers</span>
+        ${pkg.travel_style ? `<span class="detail-meta-chip"><i class="fa-solid fa-tag"></i> ${escHtml(pkg.travel_style)}</span>` : ''}
+        <span class="detail-meta-chip"><i class="fa-solid fa-indian-rupee-sign"></i> ₹${Number(pkg.price).toLocaleString('en-IN')} total</span>
+      </div>
+      <p class="detail-desc">${escHtml(pkg.description || 'A curated travel experience.')}</p>
+      ${plannerProfile ? `<p style="font-size:.85rem;color:var(--text-3);margin-top:-14px;margin-bottom:18px">Offered by <strong style="color:var(--text-2)">${escHtml(plannerProfile.name || 'a verified planner')}</strong></p>` : ''}
+      <div class="detail-actions">
+        <button class="detail-btn-primary" id="package-request-btn"><i class="fa-solid fa-paper-plane"></i> Request This Package</button>
+        <button class="detail-btn-outline" id="package-view-planner-btn"><i class="fa-solid fa-user-tie"></i> View Planner</button>
+        ${favHeartHtml('package', pkg.id)}
+      </div>
+      <div class="detail-section-heading"><i class="fa-solid fa-route"></i> Day-by-Day Itinerary</div>
+      <div>${daysHtml}</div>
+    `;
+    wireFavHearts(body);
+    document.getElementById('package-request-btn').addEventListener('click', () =>
+      openRequestModal({ plannerId: plannerUserId, destinationId: pkg.destination_id, packageId: pkg.id })
+    );
+    document.getElementById('package-view-planner-btn').addEventListener('click', () => {
+      closePackageModal(); openPlannerModal(pkg.planner_id);
+    });
+  } catch (err) {
+    body.innerHTML = `<p class="empty-state">${escHtml(err.message)}</p>`;
+  }
+}
+function closePackageModal() { document.getElementById('package-modal')?.classList.add('hidden'); }
+
+/* ============================================================
+   TRIP REQUEST MODAL
+   ============================================================ */
+function openRequestModal({ plannerId = null, destinationId = null, packageId = null } = {}) {
+  if (!getToken()) {
+    window._pendingAfterLogin = () => openRequestModal({ plannerId, destinationId, packageId });
+    openAuthModal('login');
+    showToast('Sign in to request a trip', 'error');
+    return;
+  }
+  const modal = document.getElementById('request-modal');
+  if (!modal) return;
+  document.getElementById('req-planner-id').value = plannerId ?? '';
+  document.getElementById('req-destination-id').value = destinationId ?? '';
+  document.getElementById('req-package-id').value = packageId ?? '';
+  document.getElementById('request-error').textContent = '';
+  const today = new Date();
+  const in7 = new Date(today); in7.setDate(today.getDate() + 7);
+  const in12 = new Date(today); in12.setDate(today.getDate() + 12);
+  document.getElementById('req-start-date').value = formatDate(in7);
+  document.getElementById('req-end-date').value = formatDate(in12);
+  modal.classList.remove('hidden');
+}
+function closeRequestModal() { document.getElementById('request-modal')?.classList.add('hidden'); }
+
+async function handleRequestSubmit(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('request-error');
+  const btn = document.getElementById('request-submit-btn');
+  errEl.textContent = '';
+  const plannerId = document.getElementById('req-planner-id').value;
+  const destinationId = document.getElementById('req-destination-id').value;
+  const start = document.getElementById('req-start-date').value;
+  const end = document.getElementById('req-end-date').value;
+  if (new Date(start) >= new Date(end)) { errEl.textContent = 'End date must be after start date.'; return; }
+  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Sending…';
+  try {
+    await apiCreateTripRequest({
+      planner_id: plannerId ? parseInt(plannerId) : null,
+      destination_id: destinationId ? parseInt(destinationId) : null,
+      start_date: new Date(start).toISOString(),
+      end_date: new Date(end).toISOString(),
+      travelers_count: parseInt(document.getElementById('req-travelers').value) || 1,
+      budget: parseFloat(document.getElementById('req-budget').value) || null,
+      travel_style: document.getElementById('req-style').value || null,
+      requirements: document.getElementById('req-requirements').value || null,
+    });
+    showToast('Trip request sent! The planner will respond soon. ✈️');
+    closeRequestModal();
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Send Request';
+  }
+}
+
+/* ============================================================
+   REVIEW MODAL
+   ============================================================ */
+let _reviewRating = 5;
+function openReviewModal(plannerUserId) {
+  if (!getToken()) {
+    window._pendingAfterLogin = () => openReviewModal(plannerUserId);
+    openAuthModal('login');
+    showToast('Sign in to leave a review', 'error');
+    return;
+  }
+  const modal = document.getElementById('review-modal');
+  if (!modal) return;
+  document.getElementById('rev-planner-id').value = plannerUserId;
+  document.getElementById('rev-text').value = '';
+  document.getElementById('review-error').textContent = '';
+  setStarRating(5);
+  modal.classList.remove('hidden');
+}
+function closeReviewModal() { document.getElementById('review-modal')?.classList.add('hidden'); }
+function setStarRating(val) {
+  _reviewRating = val;
+  document.getElementById('rev-rating').value = val;
+  document.querySelectorAll('#review-star-picker i').forEach(star => {
+    star.classList.toggle('active', parseInt(star.getAttribute('data-val')) <= val);
+  });
+}
+async function handleReviewSubmit(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('review-error');
+  const btn = document.getElementById('review-submit-btn');
+  errEl.textContent = '';
+  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Submitting…';
+  try {
+    await apiCreateReview({
+      planner_id: parseInt(document.getElementById('rev-planner-id').value),
+      rating: _reviewRating,
+      review_text: document.getElementById('rev-text').value || null,
+    });
+    showToast('Thanks for your review! ⭐');
+    closeReviewModal();
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Submit Review';
+  }
+}
+
+/* ============================================================
+   MY TRIPS MODAL — tabs (AI Itineraries / Trip Requests / Favorites)
+   ============================================================ */
+async function loadMyRequestsTab() {
+  const list = document.getElementById('my-requests-list');
+  list.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  const requests = await apiGetMyTripRequests();
+  if (!requests.length) { list.innerHTML = '<p class="empty-state">No trip requests yet. Visit a planner or package page to request a trip.</p>'; return; }
+  list.innerHTML = requests.map(requestCardHtml).join('');
+}
+async function loadMyFavoritesTab() {
+  const list = document.getElementById('my-favorites-list');
+  list.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  favoritesCache = await apiGetFavorites();
+  if (!favoritesCache.length) {
+    list.innerHTML = '<p class="empty-state"><i class="fa-solid fa-heart" style="font-size:2rem;display:block;margin-bottom:12px;opacity:.3;color:var(--red)"></i>No favorites yet.<br>Tap the <i class="fa-solid fa-heart" style="color:var(--red)"></i> heart icon on any destination, planner, or package.</p>';
+    return;
+  }
+
+  // Use cached data for name lookups
+  const allDests = window._allDestinations || [];
+  const allPlanners = window._allPlanners || [];
+  const allPkgs = window._allPackages || [];
+
+  list.innerHTML = favoritesCache.map(f => {
+    let type, icon, name, clickFn;
+    if (f.planner_id) {
+      type = 'Planner'; icon = 'fa-user-tie';
+      const p = allPlanners.find(pl => pl.user_id === f.planner_id);
+      name = p ? p.name : `Planner #${f.planner_id}`;
+      clickFn = `openPlannerModal(${allPlanners.find(pl=>pl.user_id===f.planner_id)?.id || 0})`;
+    } else if (f.package_id) {
+      type = 'Package'; icon = 'fa-suitcase-rolling';
+      const pkg = allPkgs.find(pk => pk.id === f.package_id);
+      name = pkg ? pkg.title : `Package #${f.package_id}`;
+      clickFn = `openPackageModal(${f.package_id})`;
+    } else {
+      type = 'Destination'; icon = 'fa-map-location-dot';
+      const d = allDests.find(de => de.id === f.destination_id);
+      name = d ? d.name : `Destination #${f.destination_id}`;
+      clickFn = `openDestinationModal(${f.destination_id})`;
+    }
+    const date = new Date(f.created_at).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'});
+    return `
+      <div class="saved-trip-card" style="cursor:pointer" onclick="${clickFn}">
+        <div class="stc-header">
+          <span class="stc-dest"><i class="fa-solid ${icon}"></i> <strong>${type}</strong>: ${escHtml(name)}</span>
+          <span class="stc-date">${date}</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="request-action-btn" onclick="event.stopPropagation();${clickFn}"><i class="fa-solid fa-eye"></i> View</button>
+          <button class="request-action-btn danger" onclick="event.stopPropagation();removeFavFromTab(${f.id},this)"><i class="fa-solid fa-heart-broken"></i> Remove</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function removeFavFromTab(favId, btn) {
+  btn.disabled = true;
+  try {
+    await apiRemoveFavorite(favId);
+    favoritesCache = favoritesCache.filter(f => f.id !== favId);
+    const card = btn.closest('.saved-trip-card');
+    if (card) card.remove();
+    showToast('Removed from favorites');
+  } catch (err) {
+    showToast(err.message, 'error');
+    btn.disabled = false;
+  }
+}
+function requestCardHtml(t) {
+  const statusClass = (t.status || 'pending').toLowerCase();
+  const start = new Date(t.start_date).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'});
+  const end = new Date(t.end_date).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'});
+  const user = getUser();
+  const isPlannerSide = user && (t.planner_id === user.id);
+  const actions = isPlannerSide && statusClass === 'pending' ? `
+      <div class="request-card-actions">
+        <button class="request-action-btn" data-trip-id="${t.id}" data-status="accepted">Accept</button>
+        <button class="request-action-btn danger" data-trip-id="${t.id}" data-status="rejected">Decline</button>
+      </div>` : (isPlannerSide && statusClass === 'accepted' ? `
+      <div class="request-card-actions">
+        <button class="request-action-btn" data-trip-id="${t.id}" data-status="completed">Mark Completed</button>
+      </div>` : '');
+  return `
+    <div class="request-card">
+      <div class="request-card-top">
+        <strong>Trip Request #${t.id}</strong>
+        <span class="request-status-badge ${statusClass}">${escHtml(t.status)}</span>
+      </div>
+      <div class="request-card-meta">
+        <span><i class="fa-solid fa-calendar"></i> ${start} → ${end}</span>
+        <span><i class="fa-solid fa-users"></i> ${t.travelers_count} traveler${t.travelers_count !== 1 ? 's' : ''}</span>
+        ${t.budget ? `<span><i class="fa-solid fa-indian-rupee-sign"></i> ₹${Number(t.budget).toLocaleString('en-IN')}</span>` : ''}
+        ${t.travel_style ? `<span><i class="fa-solid fa-tag"></i> ${escHtml(t.travel_style)}</span>` : ''}
+      </div>
+      ${t.requirements ? `<p style="font-size:.85rem;color:var(--text-2);margin-bottom:10px">${escHtml(t.requirements)}</p>` : ''}
+      ${actions}
+    </div>`;
+}
+function wireRequestActions(container) {
+  container.querySelectorAll('.request-action-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const tripId = btn.getAttribute('data-trip-id');
+      const status = btn.getAttribute('data-status');
+      btn.disabled = true;
+      try {
+        await apiUpdateTripStatus(tripId, status);
+        showToast(`Trip request marked as ${status}.`);
+        if (document.getElementById('dash-requests')?.classList.contains('active')) loadDashRequests();
+        if (document.getElementById('mt-requests')?.classList.contains('active')) loadMyRequestsTab();
+      } catch (err) {
+        showToast(err.message, 'error');
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+function switchMyTripsTab(tabId) {
+  document.querySelectorAll('#mt-tabs .mt-tab-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-mt-tab') === tabId));
+  document.querySelectorAll('#my-trips-modal .mt-panel').forEach(p => p.classList.toggle('active', p.id === tabId));
+  if (tabId === 'mt-requests') loadMyRequestsTab().then(() => wireRequestActions(document.getElementById('my-requests-list')));
+  if (tabId === 'mt-favorites') loadMyFavoritesTab();
+}
+
+/* ============================================================
+   PLANNER DASHBOARD MODAL
+   ============================================================ */
+function openDashboardModal() {
+  const modal = document.getElementById('dashboard-modal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  switchDashTab('dash-profile');
+  prefillDashProfile();
+  loadPackageDestOptions();
+}
+function closeDashboardModal() { document.getElementById('dashboard-modal')?.classList.add('hidden'); }
+function switchDashTab(tabId) {
+  document.querySelectorAll('#dash-tabs .mt-tab-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-dash-tab') === tabId));
+  document.querySelectorAll('#dashboard-modal .mt-panel').forEach(p => p.classList.toggle('active', p.id === tabId));
+  if (tabId === 'dash-packages') loadDashPackages();
+  if (tabId === 'dash-requests') loadDashRequests();
+}
+function prefillDashProfile() {
+  const user = getUser();
+  if (!user) return;
+  document.getElementById('dash-profile-error').textContent = '';
+}
+async function loadPackageDestOptions() {
+  const sel = document.getElementById('pkg-destination');
+  if (!sel || sel.options.length > 1) return;
+  const dests = window._allDestinations && window._allDestinations.length ? window._allDestinations : await apiGetDestinations();
+  sel.innerHTML = '<option value="">No specific destination</option>' + dests.map(d => `<option value="${d.id}">${escHtml(d.name)}</option>`).join('');
+}
+async function handleDashProfileSubmit(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('dash-profile-error');
+  const btn = document.getElementById('dash-profile-submit');
+  errEl.textContent = '';
+  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…';
+  try {
+    await apiSavePlannerProfile({
+      bio: document.getElementById('dash-bio').value || null,
+      location: document.getElementById('dash-location').value || null,
+      years_experience: parseInt(document.getElementById('dash-years').value) || 0,
+      starting_price: parseFloat(document.getElementById('dash-price').value) || 0,
+    });
+    // Upgrade cached role locally so nav shows "Dashboard" immediately
+    const auth = getAuth();
+    if (auth && auth.user && auth.user.role !== 'planner') {
+      auth.user.role = 'planner';
+      setAuth(auth);
+      updateNavAuth();
+    }
+    showToast('Planner profile saved! 🎉');
+    loadPlannersSection();
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Profile';
+  }
+}
+async function handleDashPackageSubmit(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('dash-package-error');
+  const btn = document.getElementById('dash-package-submit');
+  errEl.textContent = '';
+  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Creating…';
+  try {
+    await apiCreatePackage({
+      destination_id: document.getElementById('pkg-destination').value ? parseInt(document.getElementById('pkg-destination').value) : null,
+      title: document.getElementById('pkg-title').value,
+      description: document.getElementById('pkg-description').value || null,
+      duration_days: parseInt(document.getElementById('pkg-duration').value) || 1,
+      price: parseFloat(document.getElementById('pkg-price').value) || 0,
+      max_travelers: parseInt(document.getElementById('pkg-max-travelers').value) || 10,
+      travel_style: document.getElementById('pkg-style').value || null,
+    });
+    showToast('Package created! 🧳');
+    document.getElementById('dash-package-form').reset();
+    document.getElementById('dash-package-form').classList.add('hidden');
+    loadDashPackages();
+    loadPackagesSection();
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create Package';
+  }
+}
+async function loadDashPackages() {
+  const list = document.getElementById('dash-packages-list');
+  const user = getUser();
+  list.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  
+  try {
+    const [allPkgs, allPlanners] = await Promise.all([
+      apiGetPackages(),
+      apiGetPlanners()
+    ]);
+    
+    // Find the current user's planner profile
+    const myProfile = allPlanners.find(p => p.user_id === user.id);
+    
+    let myPkgs = allPkgs;
+    let note = `<p style="font-size:.8rem;color:var(--text-3);margin-bottom:10px">Showing all published packages (no profile found yet).</p>`;
+    
+    if (myProfile) {
+      myPkgs = allPkgs.filter(pkg => pkg.planner_id === myProfile.id);
+      note = ''; // Proper filtering works, no note needed
+    }
+
+    list.innerHTML = myPkgs.length
+      ? note + myPkgs.map(pkg => `
+        <div class="request-card">
+          <div class="request-card-top">
+            <strong>${escHtml(pkg.title)}</strong>
+            <span class="request-status-badge accepted">${escHtml(pkg.status)}</span>
+          </div>
+          <div class="request-card-meta">
+            <span><i class="fa-solid fa-calendar-days"></i> ${pkg.duration_days} days</span>
+            <span><i class="fa-solid fa-indian-rupee-sign"></i> ₹${Number(pkg.price).toLocaleString('en-IN')}</span>
+          </div>
+        </div>`).join('')
+      : '<p class="empty-state">No packages yet. Create your first one above.</p>';
+  } catch (err) {
+    list.innerHTML = '<p class="empty-state">Error loading packages.</p>';
+  }
+}
+async function loadDashRequests() {
+  const list = document.getElementById('dash-requests-list');
+  list.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  const requests = await apiGetMyTripRequests();
+  if (!requests.length) { list.innerHTML = '<p class="empty-state">No incoming trip requests yet.</p>'; return; }
+  list.innerHTML = requests.map(requestCardHtml).join('');
+  wireRequestActions(list);
 }
 
 // ── DOMContentLoaded: wire everything up ─────────────────────────────────────
@@ -1534,14 +3047,68 @@ document.addEventListener('DOMContentLoaded', () => {
   updateNavAuth();
   loadDestinationsSection();
   loadPlannersSection();
+  loadPackagesSection();
+
+  // ── Mobile hamburger menu ──
+  const hamburger = document.getElementById('nav-hamburger');
+  const navPills  = document.getElementById('nav-pills');
+  if (hamburger && navPills) {
+    hamburger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navPills.classList.toggle('open');
+    });
+    navPills.querySelectorAll('.nav-pill').forEach(p => p.addEventListener('click', () => navPills.classList.remove('open')));
+    document.addEventListener('click', (e) => {
+      if (navPills.classList.contains('open') && !navPills.contains(e.target) && e.target !== hamburger && !hamburger.contains(e.target)) {
+        navPills.classList.remove('open');
+      }
+    });
+  }
+
+  // ── Nav quick links → browse modal ──
+  document.getElementById('nav-link-destinations')?.addEventListener('click', (e) => { e.preventDefault(); openBrowseModal('destinations'); });
+  document.getElementById('nav-link-planners')?.addEventListener('click', (e) => { e.preventDefault(); openBrowseModal('planners'); });
+  document.getElementById('nav-link-packages')?.addEventListener('click', (e) => { e.preventDefault(); openBrowseModal('packages'); });
+  document.getElementById('btn-viewall-destinations')?.addEventListener('click', () => openBrowseModal('destinations'));
+  document.getElementById('btn-viewall-planners')?.addEventListener('click', () => openBrowseModal('planners'));
+  document.getElementById('btn-viewall-packages')?.addEventListener('click', () => openBrowseModal('packages'));
+
+  // Smooth-scroll nav pills pointing at in-page sections
+  document.querySelectorAll('.nav-pill[data-scroll]').forEach(pill => {
+    pill.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById(pill.getAttribute('data-scroll'))?.scrollIntoView({ behavior: 'smooth' });
+    });
+  });
 
   // Auth form
   const authForm = document.getElementById('auth-form');
-  if (authForm) authForm.addEventListener('submit', handleAuthSubmit);
+
+  if (authForm) {
+    authForm.addEventListener('submit', handleAuthSubmit);
+
+    console.log('[AUTH] Auth form connected');
+  } else {
+    console.error('[AUTH] #auth-form not found');
+  }
 
   // Auth modal close
   const authClose = document.getElementById('auth-modal-close');
   if (authClose) authClose.addEventListener('click', closeAuthModal);
+
+  // ── Generic modal close buttons ──
+  const modalCloseMap = {
+    'browse-modal-close': closeBrowseModal,
+    'destination-modal-close': closeDestinationModal,
+    'planner-modal-close': closePlannerModal,
+    'package-modal-close': closePackageModal,
+    'request-modal-close': closeRequestModal,
+    'review-modal-close': closeReviewModal,
+    'dashboard-modal-close': closeDashboardModal,
+  };
+  Object.entries(modalCloseMap).forEach(([id, fn]) => {
+    document.getElementById(id)?.addEventListener('click', fn);
+  });
 
   // Click outside to close modals
   document.addEventListener('click', (e) => {
@@ -1555,17 +3122,80 @@ document.addEventListener('DOMContentLoaded', () => {
     if (tripsModal && !tripsModal.classList.contains('hidden') && tripsBox && !tripsBox.contains(e.target) && !e.target.closest('#nav-my-trips')) {
       closeMyTripsModal();
     }
+    const overlayCloseMap = [
+      ['browse-modal', 'browse-modal-box', closeBrowseModal],
+      ['destination-modal', 'destination-modal-box', closeDestinationModal],
+      ['planner-modal', 'planner-modal-box', closePlannerModal],
+      ['package-modal', 'package-modal-box', closePackageModal],
+      ['request-modal', 'request-modal-box', closeRequestModal],
+      ['review-modal', 'review-modal-box', closeReviewModal],
+      ['dashboard-modal', 'dashboard-modal-box', closeDashboardModal],
+    ];
+    overlayCloseMap.forEach(([overlayId, boxId, fn]) => {
+      const overlay = document.getElementById(overlayId);
+      const box = document.getElementById(boxId);
+      if (overlay && !overlay.classList.contains('hidden') && box && !box.contains(e.target)) fn();
+    });
   });
 
   // Save itinerary
   const saveBtn = document.getElementById('btn-save-itinerary');
   if (saveBtn) saveBtn.addEventListener('click', handleSaveItinerary);
 
-  // My trips
-  const myTripsBtn = document.getElementById('btn-my-trips');
-  if (myTripsBtn) myTripsBtn.addEventListener('click', openMyTripsModal);
+  // Default sign-in button (visible before login, in hero/nav area)
+  document.getElementById('nav-signin-btn-default')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    console.log('[AUTH] Default Sign in button clicked');
+
+    openAuthModal('login');
+});
 
   // My trips modal close
   const tripsClose = document.getElementById('my-trips-modal-close');
   if (tripsClose) tripsClose.addEventListener('click', closeMyTripsModal);
+
+  // My trips tabs
+  document.querySelectorAll('#mt-tabs .mt-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchMyTripsTab(btn.getAttribute('data-mt-tab')));
+  });
+
+  // Dashboard tabs
+  document.querySelectorAll('#dash-tabs .mt-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchDashTab(btn.getAttribute('data-dash-tab')));
+  });
+
+  // Request / Review forms
+  document.getElementById('request-form')?.addEventListener('submit', handleRequestSubmit);
+  document.getElementById('review-form')?.addEventListener('submit', handleReviewSubmit);
+  document.querySelectorAll('#review-star-picker i').forEach(star => {
+    star.addEventListener('click', () => setStarRating(parseInt(star.getAttribute('data-val'))));
+  });
+
+  // Dashboard forms
+  document.getElementById('dash-profile-form')?.addEventListener('submit', handleDashProfileSubmit);
+  document.getElementById('dash-package-form')?.addEventListener('submit', handleDashPackageSubmit);
+  document.getElementById('btn-new-package')?.addEventListener('click', () => {
+    document.getElementById('dash-package-form')?.classList.toggle('hidden');
+  });
+});
+
+
+// ============================================================
+// AUTH DEBUGGING
+// ============================================================
+
+window.addEventListener('error', (event) => {
+    console.error(
+        '[APP GLOBAL ERROR]',
+        event.error || event.message
+    );
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    console.error(
+        '[APP UNHANDLED PROMISE ERROR]',
+        event.reason
+    );
 });

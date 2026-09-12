@@ -93,3 +93,16 @@ Start the frontend in a second terminal:
 ```powershell
 streamlit run frontend/app.py
 ```
+
+## Deploy Backend On Render
+
+Create a Render Web Service from this repository. Render will use `render.yaml`,
+or configure these values manually:
+
+- Build command: `pip install -r requirements.txt`
+- Start command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+- Health check path: `/health`
+
+Add the database, JWT, and API key environment variables listed in `render.yaml`.
+The frontend must use the Render service URL as its API base URL when hosted on a
+different domain.
