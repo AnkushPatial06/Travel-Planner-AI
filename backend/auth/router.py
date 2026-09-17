@@ -69,3 +69,9 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 def get_me(current_user: User = Depends(get_current_user)):
     """Return the profile of the currently authenticated user."""
     return UserResponse.model_validate(current_user)
+
+
+@router.post("/logout")
+def logout(current_user: User = Depends(get_current_user)):
+    """Stateless JWT logout endpoint for clients that want a server-confirmed sign-out."""
+    return {"message": "Logged out successfully."}

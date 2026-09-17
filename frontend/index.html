@@ -11,7 +11,16 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <!-- Marked.js -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <link rel="stylesheet" href="style.css">
+    <!-- Stylesheets (split by functional area — load order matters) -->
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/landing.css">
+    <link rel="stylesheet" href="css/results.css">
+    <link rel="stylesheet" href="css/misc-and-chat.css">
+    <link rel="stylesheet" href="css/analysis-tabs.css">
+    <link rel="stylesheet" href="css/auth-and-planner.css">
+    <link rel="stylesheet" href="css/modals.css">
+    <link rel="stylesheet" href="css/footer.css">
 </head>
 <body>
 
@@ -120,6 +129,9 @@
                     <div class="lstep" id="lstep-budget"><i class="fa-solid fa-wallet"></i> Budget analysis</div>
                     <div class="lstep" id="lstep-ai"><i class="fa-solid fa-robot"></i> AI recommendations</div>
                 </div>
+                <button type="button" class="loading-cancel-btn" id="loading-cancel-btn">
+                    <i class="fa-solid fa-xmark"></i> Cancel Search
+                </button>
             </div>
         </div>
 
@@ -203,9 +215,6 @@
                     </button>
                 </div>
             </div>
-
-            <!-- ─── DB Destination Match Inject ─── -->
-            <div id="matched-destination-wrap"></div>
 
             <!-- ─── Results Body ─── -->
             <div class="results-body">
@@ -412,7 +421,81 @@
             </div>
         </aside>
 
+        <!-- ─── DB Destination Match Inject (Packages + Planners for searched destination) ───
+             Spans full width, below both the results tabs and the budget sidebar. -->
+        <div id="matched-destination-wrap" class="hidden"></div>
+
     </main>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- SITE FOOTER                                                  -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <footer class="site-footer">
+        <div class="footer-top">
+            <div class="footer-col footer-brand">
+                <div class="footer-logo"><i class="fa-solid fa-plane-circle-check"></i> Booking.AI</div>
+                <p>Real-time flights &amp; hotels, weather intelligence, budget analysis, and AI-powered travel scoring — all in one place.</p>
+                <div class="footer-social">
+                    <a href="#" aria-label="Facebook"><i class="fa-brands fa-facebook-f"></i></a>
+                    <a href="#" aria-label="Instagram"><i class="fa-brands fa-instagram"></i></a>
+                    <a href="#" aria-label="Twitter / X"><i class="fa-brands fa-x-twitter"></i></a>
+                    <a href="#" aria-label="LinkedIn"><i class="fa-brands fa-linkedin-in"></i></a>
+                </div>
+            </div>
+
+            <div class="footer-col">
+                <h4>Explore</h4>
+                <ul>
+                    <li><a href="#hero">Search Flights &amp; Hotels</a></li>
+                    <li><a href="#section-destinations">Destinations</a></li>
+                    <li><a href="#section-planners">Travel Planners</a></li>
+                    <li><a href="#section-packages">Packages</a></li>
+                </ul>
+            </div>
+
+            <div class="footer-col">
+                <h4>Support</h4>
+                <ul>
+                    <li><a href="#">Contact Us</a></li>
+                    <li><a href="#">FAQs</a></li>
+                    <li><a href="#">Terms of Service</a></li>
+                    <li><a href="#">Privacy Policy</a></li>
+                </ul>
+            </div>
+
+            <div class="footer-col footer-feedback-col">
+                <h4>Rate Your Experience</h4>
+                <p class="footer-feedback-sub">Tell us what you think of Booking.AI</p>
+                <form id="site-feedback-form" class="footer-feedback-form" autocomplete="off">
+                    <div class="footer-star-rating" id="footer-star-rating">
+                        <button type="button" class="footer-star" data-value="1" aria-label="1 star"><i class="fa-solid fa-star"></i></button>
+                        <button type="button" class="footer-star" data-value="2" aria-label="2 stars"><i class="fa-solid fa-star"></i></button>
+                        <button type="button" class="footer-star" data-value="3" aria-label="3 stars"><i class="fa-solid fa-star"></i></button>
+                        <button type="button" class="footer-star" data-value="4" aria-label="4 stars"><i class="fa-solid fa-star"></i></button>
+                        <button type="button" class="footer-star" data-value="5" aria-label="5 stars"><i class="fa-solid fa-star"></i></button>
+                    </div>
+                    <input type="hidden" id="footer-feedback-rating" value="0">
+                    <textarea id="footer-feedback-text" placeholder="What can we do better?" rows="2" maxlength="500"></textarea>
+                    <button type="submit" class="footer-feedback-submit" id="footer-feedback-submit">
+                        <i class="fa-solid fa-paper-plane"></i> Send Feedback
+                    </button>
+                    <div class="footer-feedback-msg" id="footer-feedback-msg"></div>
+                </form>
+            </div>
+        </div>
+
+        <div class="footer-reviews">
+            <h4><i class="fa-solid fa-comment-dots"></i> What Travelers Are Saying</h4>
+            <div class="footer-reviews-track" id="footer-reviews-track">
+                <div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+            </div>
+        </div>
+
+        <div class="footer-bottom">
+            <span>© 2026 Booking.AI. All rights reserved.</span>
+            <span>Made with <i class="fa-solid fa-heart" style="color:#ef4444"></i> for travelers across India.</span>
+        </div>
+    </footer>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- AI TRAVEL ASSISTANT CHAT WIDGET                             -->
@@ -510,6 +593,7 @@
                     <select id="auth-role">
                         <option value="traveler">Traveler</option>
                         <option value="planner">Travel Planner</option>
+                        <option value="package_provider">Package Provider</option>
                     </select>
                 </div>
                 <div class="auth-error" id="auth-error"></div>
@@ -631,6 +715,7 @@
             <h2><i class="fa-solid fa-star"></i> Leave a Review</h2>
             <form class="auth-form" id="review-form">
                 <input type="hidden" id="rev-planner-id">
+                <input type="hidden" id="rev-destination-id">
                 <div class="search-field auth-field">
                     <label>Rating</label>
                     <div class="star-picker" id="review-star-picker">
@@ -656,11 +741,13 @@
     <div class="modal-overlay hidden" id="dashboard-modal">
         <div class="modal-box modal-box-xl" id="dashboard-modal-box">
             <button class="modal-close" id="dashboard-modal-close"><i class="fa-solid fa-xmark"></i></button>
-            <h2><i class="fa-solid fa-briefcase"></i> Planner Dashboard</h2>
+            <h2 id="dashboard-title"><i class="fa-solid fa-briefcase"></i> Dashboard</h2>
             <div class="mt-tabs" id="dash-tabs">
                 <button class="mt-tab-btn active" data-dash-tab="dash-profile">My Profile</button>
                 <button class="mt-tab-btn" data-dash-tab="dash-packages">My Packages</button>
                 <button class="mt-tab-btn" data-dash-tab="dash-requests">Incoming Requests</button>
+                <button class="mt-tab-btn" data-dash-tab="dash-chats">Chats</button>
+                <button class="mt-tab-btn" data-dash-tab="dash-blogs">Blogs</button>
             </div>
 
             <div class="mt-panel active" id="dash-profile">
@@ -719,6 +806,30 @@
                         <label>Travel style</label>
                         <input type="text" id="pkg-style" placeholder="e.g. adventure, luxury, family">
                     </div>
+                    <div class="search-field auth-field">
+                        <label>Hotels</label>
+                        <textarea id="pkg-hotels" placeholder="One hotel per line"></textarea>
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Activities</label>
+                        <textarea id="pkg-activities" placeholder="One activity per line"></textarea>
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Image URLs</label>
+                        <textarea id="pkg-images" placeholder="One image URL per line"></textarea>
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Inclusions</label>
+                        <textarea id="pkg-inclusions" placeholder="Meals, transfers, guide..."></textarea>
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Exclusions</label>
+                        <textarea id="pkg-exclusions" placeholder="Flights, personal expenses..."></textarea>
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Availability</label>
+                        <input type="text" id="pkg-availability" placeholder="e.g. Available Oct-Mar, 8 seats left">
+                    </div>
                     <div class="auth-error" id="dash-package-error"></div>
                     <button type="submit" class="auth-submit-btn" id="dash-package-submit">Create Package</button>
                 </form>
@@ -728,9 +839,72 @@
             <div class="mt-panel" id="dash-requests">
                 <div id="dash-requests-list" class="my-trips-list"></div>
             </div>
+
+            <div class="mt-panel" id="dash-chats">
+                <div id="dash-chats-list" class="my-trips-list"></div>
+            </div>
+
+            <div class="mt-panel" id="dash-blogs">
+                <form class="auth-form" id="dash-blog-form">
+                    <div class="search-field auth-field">
+                        <label>Destination</label>
+                        <select id="blog-destination"></select>
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Title</label>
+                        <input type="text" id="blog-title" placeholder="Destination tip headline" required>
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Image URL</label>
+                        <input type="url" id="blog-image" placeholder="Optional cover image">
+                    </div>
+                    <div class="search-field auth-field">
+                        <label>Blog Content</label>
+                        <textarea id="blog-content" placeholder="Write practical travel advice for this destination" required></textarea>
+                    </div>
+                    <div class="auth-error" id="dash-blog-error"></div>
+                    <button type="submit" class="auth-submit-btn" id="dash-blog-submit">Publish Blog</button>
+                </form>
+            </div>
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- User-Planner Chat Modal -->
+    <div class="modal-overlay hidden" id="user-chat-modal">
+        <div class="modal-box modal-box-large" id="user-chat-modal-box" style="display: flex; flex-direction: column; height: 80vh; max-height: 800px;">
+            <button class="modal-close" id="user-chat-modal-close"><i class="fa-solid fa-xmark"></i></button>
+            <h2 id="user-chat-title" style="margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 10px;"><i class="fa-solid fa-comments"></i> Chat</h2>
+            <div id="user-chat-messages" style="flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; background: var(--surface-2); border-radius: 8px; margin-bottom: 10px;">
+                <!-- Messages will be populated here -->
+            </div>
+            <form id="user-chat-form" style="display: flex; gap: 10px;">
+                <input type="text" id="user-chat-input" placeholder="Type a message..." style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--border);" required autocomplete="off">
+                <button type="submit" class="auth-submit-btn" style="width: auto; padding: 10px 20px;"><i class="fa-solid fa-paper-plane"></i></button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scripts (split by functional area — load order matters, since -->
+    <!-- everything shares one global scope, same as the original app.js) -->
+    <script src="js/core/config-and-state.js"></script>
+    <script src="js/search/search-form.js"></script>
+    <script src="js/search/results-render.js"></script>
+    <script src="js/search/ui-utils.js"></script>
+    <script src="js/chat/ai-assistant-chat.js"></script>
+    <script src="js/auth/auth-state.js"></script>
+    <script src="js/core/api-client.js"></script>
+    <script src="js/auth/auth-nav.js"></script>
+    <script src="js/auth/auth-modal.js"></script>
+    <script src="js/trips/my-trips.js"></script>
+    <script src="js/favorites/favorites.js"></script>
+    <script src="js/landing/landing-sections.js"></script>
+    <script src="js/modals/browse-modal.js"></script>
+    <script src="js/modals/detail-modals.js"></script>
+    <script src="js/modals/request-review-modals.js"></script>
+    <script src="js/planner/dashboard-modal.js"></script>
+    <script src="js/core/bootstrap.js"></script>
+    <script src="js/core/error-logging.js"></script>
+    <script src="js/chat/planner-chat.js"></script>
+    <script src="js/footer/site-feedback.js"></script>
 </body>
 </html>

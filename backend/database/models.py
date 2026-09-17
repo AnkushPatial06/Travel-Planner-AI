@@ -34,6 +34,7 @@ from backend.database.connection import Base
 class UserRole(str, enum.Enum):
     traveler = "traveler"
     planner = "planner"
+    package_provider = "package_provider"
     admin = "admin"
 
 
@@ -332,6 +333,11 @@ class Destination(Base):
         nullable=True
     )
 
+    attractions = Column(JSON, nullable=True)
+    activities = Column(JSON, nullable=True)
+    travel_tips = Column(JSON, nullable=True)
+    images = Column(JSON, nullable=True)
+
     created_at = Column(
         DateTime,
         default=_now,
@@ -504,6 +510,13 @@ class TravelPackage(Base):
         String(100),
         nullable=True
     )
+
+    hotels = Column(JSON, nullable=True)
+    activities = Column(JSON, nullable=True)
+    images = Column(JSON, nullable=True)
+    inclusions = Column(JSON, nullable=True)
+    exclusions = Column(JSON, nullable=True)
+    availability = Column(JSON, nullable=True)
 
     status = Column(
         Enum(PackageStatus),
@@ -776,7 +789,7 @@ class Review(Base):
             "users.id",
             ondelete="CASCADE"
         ),
-        nullable=False,
+        nullable=True,
         index=True
     )
 
@@ -787,6 +800,16 @@ class Review(Base):
             ondelete="SET NULL"
         ),
         nullable=True
+    )
+
+    destination_id = Column(
+        BigInteger,
+        ForeignKey(
+            "destinations.id",
+            ondelete="SET NULL"
+        ),
+        nullable=True,
+        index=True
     )
 
     trip_request_id = Column(
@@ -845,6 +868,8 @@ class Review(Base):
         "TravelPackage",
         back_populates="reviews"
     )
+
+    destination = relationship("Destination")
 
     trip_request = relationship(
         "TripRequest",
@@ -1045,3 +1070,105 @@ class AITrip(Base):
 
     def __repr__(self):
         return f"<AITrip id={self.id} dest={self.destination_name}>"
+# ------------------------------------------------------------------------------
+# 11. ChatRoom
+# ------------------------------------------------------------------------------
+
+class ChatRoom(Base):
+    __tablename__ = "chat_rooms"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    traveler_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    planner_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("traveler_id", "planner_id", name="uq_chat_room_traveler_planner"),
+        Index("ix_chat_room_traveler", "traveler_id"),
+        Index("ix_chat_room_planner", "planner_id"),
+    )
+
+    traveler = relationship("User", foreign_keys=[traveler_id])
+    planner = relationship("User", foreign_keys=[planner_id])
+    messages = relationship("ChatMessage", back_populates="room", cascade="all, delete-orphan", order_by="ChatMessage.created_at")
+
+# ------------------------------------------------------------------------------
+# 12. ChatMessage
+# ------------------------------------------------------------------------------
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    room_id = Column(BigInteger, ForeignKey("chat_rooms.id", ondelete="CASCADE"), nullable=False)
+    sender_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    is_read = Column(Boolean, default=False, nullable=False)
+
+    __table_args__ = (
+        Index("ix_chat_msg_room", "room_id"),
+        Index("ix_chat_msg_created", "created_at"),
+    )
+
+    room = relationship("ChatRoom", back_populates="messages")
+    sender = relationship("User", foreign_keys=[sender_id])
+
+# ------------------------------------------------------------------------------
+# 13. DestinationBlog
+# ------------------------------------------------------------------------------
+
+class DestinationBlog(Base):
+    __tablename__ = "destination_blogs"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    destination_id = Column(BigInteger, ForeignKey("destinations.id", ondelete="CASCADE"), nullable=False)
+    author_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    image_url = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    __table_args__ = (
+        Index("ix_blog_destination", "destination_id"),
+        Index("ix_blog_author", "author_id"),
+    )
+
+    destination = relationship("Destination")
+    author = relationship("User", foreign_keys=[author_id])
+
+
+# ------------------------------------------------------------------------------
+# 14. SiteFeedback
+# ------------------------------------------------------------------------------
+
+class SiteFeedback(Base):
+    """Public 'rate our website' feedback — separate from planner/destination
+    Reviews above. Submission does not require login (user_id is nullable)."""
+    __tablename__ = "site_feedback"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    user_id = Column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    name = Column(String(120), nullable=True)
+    rating = Column(Integer, nullable=False)
+    comment = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=_now, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("rating >= 1 AND rating <= 5", name="ck_site_feedback_rating_range"),
+        Index("ix_site_feedback_created", "created_at"),
+    )
+
+    user = relationship("User", foreign_keys=[user_id])
+
+    def __repr__(self):
+        return f"<SiteFeedback id={self.id} rating={self.rating}>"

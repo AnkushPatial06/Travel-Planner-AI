@@ -1,0 +1,90 @@
+/* ============================================================
+   Base — CSS custom properties (design tokens), reset, and global typography.
+   ============================================================ */
+
+/* ============================================================
+   BOOKING.AI — PREMIUM TRAVEL PLANNER STYLESHEET
+   ============================================================ */
+
+/* ── CSS Custom Properties ── */
+:root {
+    /* Brand */
+    --brand:        #003580;
+    --brand-light:  #006ce4;
+    --brand-accent: #ffb700;
+    --brand-glow:   rgba(0,108,228,0.18);
+
+    /* Surface */
+    --bg:           #f3f5f9;
+    --surface:      #ffffff;
+    --surface-2:    #f8f9fb;
+    --border:       #e4e8ef;
+    --border-hover: #b0bdd0;
+
+    /* Text */
+    --text-1:       #1a1e2e;
+    --text-2:       #4a5568;
+    --text-3:       #8898aa;
+    --text-inv:     #ffffff;
+
+    /* Status */
+    --green:        #00875a;
+    --green-bg:     #e3f9ee;
+    --red:          #d32f2f;
+    --red-bg:       #fdecea;
+    --amber:        #e67e00;
+    --amber-bg:     #fff3e0;
+
+    /* Shadow */
+    --shadow-sm:    0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+    --shadow-md:    0 4px 16px rgba(0,0,0,.10), 0 2px 6px rgba(0,0,0,.06);
+    --shadow-lg:    0 12px 40px rgba(0,0,0,.14);
+    --shadow-card:  0 2px 8px rgba(0,53,128,.08), 0 0 0 1px rgba(0,53,128,.05);
+
+    /* Radius */
+    --r-sm:  8px;
+    --r-md:  14px;
+    --r-lg:  20px;
+    --r-xl:  28px;
+
+    /* Transition */
+    --ease: cubic-bezier(.4,0,.2,1);
+
+    /* Aliases (used by later feature blocks — keep in sync with core tokens) */
+    --text-dark:    var(--text-1);
+    --text-light:   var(--text-3);
+    --text-muted:   var(--text-2);
+    --text:         var(--text-2);
+    --bg-body:      var(--bg);
+    --border-light: var(--border);
+    --brand-dark:   #002a63;
+    --warning:      var(--amber);
+    --font-display: 'Outfit', sans-serif;
+    --font-body:    'Inter', system-ui, sans-serif;
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text-1);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.6;
+}
+img { display: block; max-width: 100%; }
+a { text-decoration: none; color: inherit; }
+button { cursor: pointer; font-family: inherit; }
+input, button, textarea, select { outline: none; }
+textarea {
+    resize: vertical;
+    min-height: 88px;
+    font-family: inherit;
+}
+
+/* ── Utility ── */
+.hidden { display: none !important; }
+

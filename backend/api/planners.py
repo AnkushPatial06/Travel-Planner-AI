@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
 from backend.database.connection import get_db
-from backend.database.models import PlannerProfile, User, UserRole, VerificationStatus
+from backend.database.models import PlannerDestination, PlannerProfile, User, UserRole, VerificationStatus
 from backend.auth.utils import get_current_user, require_planner
 
 router = APIRouter(prefix="/api/planners", tags=["Planners"])
@@ -32,6 +32,7 @@ class PlannerProfileOut(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     profile_image: Optional[str] = None
+    destination_ids: List[int] = []
 
     model_config = {"from_attributes": True}
 
@@ -50,7 +51,7 @@ def list_planners(skip: int = 0, limit: int = 30, db: Session = Depends(get_db))
     """List all verified planners with their profiles."""
     profiles = (
         db.query(PlannerProfile)
-        .options(joinedload(PlannerProfile.user))
+        .options(joinedload(PlannerProfile.user), joinedload(PlannerProfile.specializations))
         .offset(skip)
         .limit(limit)
         .all()
@@ -70,6 +71,7 @@ def list_planners(skip: int = 0, limit: int = 30, db: Session = Depends(get_db))
             name=p.user.name if p.user else None,
             email=p.user.email if p.user else None,
             profile_image=p.user.profile_image if p.user else None,
+            destination_ids=[s.destination_id for s in p.specializations],
         )
         result.append(out)
     return result
@@ -80,7 +82,7 @@ def get_planner(planner_id: int, db: Session = Depends(get_db)):
     """Get a single planner profile by ID."""
     p = (
         db.query(PlannerProfile)
-        .options(joinedload(PlannerProfile.user))
+        .options(joinedload(PlannerProfile.user), joinedload(PlannerProfile.specializations))
         .filter(PlannerProfile.id == planner_id)
         .first()
     )
@@ -94,6 +96,7 @@ def get_planner(planner_id: int, db: Session = Depends(get_db)):
         name=p.user.name if p.user else None,
         email=p.user.email if p.user else None,
         profile_image=p.user.profile_image if p.user else None,
+        destination_ids=[s.destination_id for s in p.specializations],
     )
 
 
@@ -104,7 +107,7 @@ def create_or_update_profile(
     db: Session = Depends(get_db),
 ):
     """Create or update the planner profile for the authenticated user."""
-    if current_user.role not in (UserRole.planner, UserRole.admin):
+    if current_user.role not in (UserRole.planner, UserRole.package_provider, UserRole.admin):
         # Upgrade role to planner
         current_user.role = UserRole.planner
         db.add(current_user)
@@ -138,4 +141,5 @@ def create_or_update_profile(
         rating=profile.rating, total_reviews=profile.total_reviews,
         name=current_user.name, email=current_user.email,
         profile_image=current_user.profile_image,
+        destination_ids=[s.destination_id for s in profile.specializations],
     )

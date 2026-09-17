@@ -41,11 +41,20 @@ def add_favorite(
     db: Session = Depends(get_db),
 ):
     """Add a planner, package, or destination to favorites."""
-    if not any([payload.planner_id, payload.package_id, payload.destination_id]):
+    target_count = sum(1 for target in (payload.planner_id, payload.package_id, payload.destination_id) if target)
+    if target_count != 1:
         raise HTTPException(
             status_code=400,
-            detail="Provide at least one of: planner_id, package_id, destination_id",
+            detail="Provide exactly one of: planner_id, package_id, destination_id",
         )
+    existing = db.query(Favorite).filter(
+        Favorite.traveler_id == current_user.id,
+        Favorite.planner_id == payload.planner_id,
+        Favorite.package_id == payload.package_id,
+        Favorite.destination_id == payload.destination_id,
+    ).first()
+    if existing:
+        return existing
     fav = Favorite(
         traveler_id=current_user.id,
         planner_id=payload.planner_id,

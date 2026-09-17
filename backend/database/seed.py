@@ -74,6 +74,24 @@ def seed():
                 name=d["name"], country="India", state=d["state"],
                 description=d["desc"], image=d["image"],
                 best_time_to_visit=d["best_time"], average_budget=d["budget"],
+                attractions=[
+                    f"{d['name']} viewpoints",
+                    "Local markets",
+                    "Cultural landmarks",
+                    "Food walks",
+                ],
+                activities=[
+                    "Guided sightseeing",
+                    "Local cuisine tasting",
+                    "Photography walks",
+                    "Heritage exploration",
+                ],
+                travel_tips=[
+                    f"Book stays early during {d['best_time']}.",
+                    "Keep local transport buffers in the itinerary.",
+                    "Carry a government ID for hotel check-ins and permits.",
+                ],
+                images=[d["image"]],
             )
             db.add(dest)
             dests.append(dest)
@@ -196,6 +214,12 @@ def seed():
                 max_travelers=12,
                 travel_style=pd["style"],
                 status=PackageStatus.active,
+                hotels=["Verified 3-star or boutique stays", "Upgrade options available"],
+                activities=["Daily guided experiences", "Local food and culture stops"],
+                images=[dests[pd["dest"]].image],
+                inclusions=["Accommodation", "Local transfers", "Planner support", "Listed activities"],
+                exclusions=["Flights", "Personal expenses", "Travel insurance"],
+                availability={"note": "Available on request with seasonal date confirmation"},
             )
             db.add(pkg)
             db.flush()

@@ -74,7 +74,12 @@ body {
 img { display: block; max-width: 100%; }
 a { text-decoration: none; color: inherit; }
 button { cursor: pointer; font-family: inherit; }
-input, button { outline: none; border: none; background: transparent; }
+input, button, textarea, select { outline: none; }
+textarea {
+    resize: vertical;
+    min-height: 88px;
+    font-family: inherit;
+}
 
 /* ── Utility ── */
 .hidden { display: none !important; }
@@ -159,7 +164,7 @@ input, button { outline: none; border: none; background: transparent; }
 .hero-bg-art {
     position: absolute;
     inset: 0;
-    background: url('hero_bg.png') right center / contain no-repeat;
+    background: url('../assets/images/hero_bg.png') right center / contain no-repeat;
     opacity: .12;
     pointer-events: none;
 }
@@ -232,7 +237,9 @@ input, button { outline: none; border: none; background: transparent; }
     gap: 5px;
 }
 .search-field label i { color: var(--brand-light); font-size: .7rem; }
-.search-field input {
+.search-field input,
+.search-field select,
+.search-field textarea {
     width: 100%;
     background: var(--surface-2);
     border: 2px solid var(--border);
@@ -244,7 +251,9 @@ input, button { outline: none; border: none; background: transparent; }
     transition: border-color .2s var(--ease), box-shadow .2s var(--ease), background .2s;
     font-family: inherit;
 }
-.search-field input:focus {
+.search-field input:focus,
+.search-field select:focus,
+.search-field textarea:focus {
     border-color: var(--brand-light);
     background: #fff;
     box-shadow: 0 0 0 4px var(--brand-glow);
@@ -2080,6 +2089,37 @@ input, button { outline: none; border: none; background: transparent; }
 .nav-my-trips-btn:hover, .nav-logout-btn:hover { background: rgba(255,255,255,0.25); }
 
 /* ============================================================
+   PLANNER WORKSPACE MODE
+   A logged-in planner/package-provider/admin never sees the traveler
+   homepage (search hero, destinations, results, etc.) — only their
+   own dashboard, rendered as a full page instead of a popup.
+   ============================================================ */
+body.planner-view #hero,
+body.planner-view #nav-pills,
+body.planner-view #main-wrap {
+    display: none !important;
+}
+body.planner-view #dashboard-modal {
+    position: static;
+    background: none;
+    backdrop-filter: none;
+    display: block;
+    padding: 32px 24px 60px;
+    opacity: 1;
+    min-height: 60vh;
+}
+body.planner-view #dashboard-modal .modal-box {
+    max-width: 1100px;
+    margin: 0 auto;
+    box-shadow: none;
+    border: 1px solid var(--border-light);
+    transform: none;
+}
+body.planner-view #dashboard-modal .modal-close {
+    display: none;
+}
+
+/* ============================================================
    MODALS
    ============================================================ */
 .modal-overlay {
@@ -2365,7 +2405,8 @@ input, button { outline: none; border: none; background: transparent; }
     display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;
 }
 .browse-filter-bar label { font-size: .82rem; font-weight: 600; color: var(--text-2); }
-.browse-filter-bar select {
+.browse-filter-bar select,
+.browse-filter-bar input {
     padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 8px;
     font-size: .85rem; color: var(--text-1); background: var(--surface);
 }

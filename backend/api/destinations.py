@@ -24,18 +24,30 @@ class DestinationOut(BaseModel):
     image: Optional[str] = None
     best_time_to_visit: Optional[str] = None
     average_budget: Optional[float] = None
+    attractions: Optional[List[str]] = None
+    activities: Optional[List[str]] = None
+    travel_tips: Optional[List[str]] = None
+    images: Optional[List[str]] = None
 
     model_config = {"from_attributes": True}
 
 
 @router.get("/", response_model=List[DestinationOut])
 def list_destinations(
+    q: Optional[str] = None,
+    state: Optional[str] = None,
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db),
 ):
     """List all available travel destinations."""
-    return db.query(Destination).offset(skip).limit(limit).all()
+    query = db.query(Destination)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(Destination.name.ilike(like))
+    if state:
+        query = query.filter(Destination.state == state)
+    return query.order_by(Destination.name.asc()).offset(skip).limit(limit).all()
 
 
 @router.get("/{destination_id}", response_model=DestinationOut)

@@ -12,14 +12,15 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from backend.database.connection import get_db
-from backend.database.models import Review, TripRequest, TripStatus, User
+from backend.database.models import Destination, Review, TripRequest, TripStatus, User
 from backend.auth.utils import get_current_user
 
 router = APIRouter(prefix="/api/reviews", tags=["Reviews"])
 
 
 class ReviewCreate(BaseModel):
-    planner_id: int
+    planner_id: Optional[int] = None
+    destination_id: Optional[int] = None
     package_id: Optional[int] = None
     trip_request_id: Optional[int] = None
     rating: int
@@ -36,7 +37,8 @@ class ReviewCreate(BaseModel):
 class ReviewOut(BaseModel):
     id: int
     traveler_id: int
-    planner_id: int
+    planner_id: Optional[int] = None
+    destination_id: Optional[int] = None
     package_id: Optional[int] = None
     trip_request_id: Optional[int] = None
     rating: int
@@ -53,6 +55,8 @@ def create_review(
     db: Session = Depends(get_db),
 ):
     """Create a review. One review per completed trip request."""
+    if not payload.planner_id and not payload.destination_id:
+        raise HTTPException(status_code=400, detail="Review must target a planner or destination.")
     # If tied to a trip, ensure it's completed and prevent duplicates
     if payload.trip_request_id:
         trip = db.query(TripRequest).filter(
@@ -75,6 +79,7 @@ def create_review(
     review = Review(
         traveler_id=current_user.id,
         planner_id=payload.planner_id,
+        destination_id=payload.destination_id,
         package_id=payload.package_id,
         trip_request_id=payload.trip_request_id,
         rating=payload.rating,
@@ -84,9 +89,12 @@ def create_review(
 
     # Update planner's average rating
     from backend.database.models import PlannerProfile
-    profile = db.query(PlannerProfile).filter(
-        PlannerProfile.user_id == payload.planner_id
-    ).first()
+    if payload.planner_id:
+        profile = db.query(PlannerProfile).filter(
+            PlannerProfile.user_id == payload.planner_id
+        ).first()
+    else:
+        profile = None
     if profile:
         total = profile.total_reviews + 1
         profile.rating = round(
@@ -105,6 +113,20 @@ def planner_reviews(planner_user_id: int, db: Session = Depends(get_db)):
     return (
         db.query(Review)
         .filter(Review.planner_id == planner_user_id)
+        .order_by(Review.created_at.desc())
+        .all()
+    )
+
+
+@router.get("/destination/{destination_id}", response_model=List[ReviewOut])
+def destination_reviews(destination_id: int, db: Session = Depends(get_db)):
+    """Get all reviews for a destination."""
+    destination = db.query(Destination).filter(Destination.id == destination_id).first()
+    if not destination:
+        raise HTTPException(status_code=404, detail="Destination not found.")
+    return (
+        db.query(Review)
+        .filter(Review.destination_id == destination_id)
         .order_by(Review.created_at.desc())
         .all()
     )

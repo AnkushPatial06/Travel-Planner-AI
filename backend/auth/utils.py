@@ -94,10 +94,40 @@ def get_current_user(
 
 
 def require_planner(current_user: User = Depends(get_current_user)) -> User:
-    """Dependency that additionally asserts the user is a planner."""
-    if current_user.role.value not in ("planner", "admin"):
+    """Dependency that additionally asserts the user is a planner or package provider."""
+    if current_user.role.value not in ("planner", "package_provider", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="This action requires a planner account.",
+            detail="This action requires a planner or package provider account.",
         )
     return current_user
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency that additionally asserts the user is an admin."""
+    if current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This action requires an admin account.",
+        )
+    return current_user
+
+
+def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """Like get_current_user, but returns None instead of raising 401 when no
+    (or an invalid) token is provided. Used by endpoints that should accept
+    anonymous submissions — e.g. site feedback — but still attach the user
+    when they happen to be logged in."""
+    if credentials is None:
+        return None
+    try:
+        payload = decode_access_token(credentials.credentials)
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        return db.query(User).filter(User.id == int(user_id), User.is_active == True).first()
+    except HTTPException:
+        return None

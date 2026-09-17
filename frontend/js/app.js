@@ -42,6 +42,85 @@ const elSelFlight     = document.getElementById('bc-sel-flight');
 const elSelHotel      = document.getElementById('bc-sel-hotel');
 
 // ── Init Dates ─────────────────────────────────────────────
+function splitLines(value) {
+  return (value || '').split(/\r?\n|,/).map(v => v.trim()).filter(Boolean);
+}
+
+async function setPackageStatus(packageId, status, btn) {
+  btn.disabled = true;
+  try {
+    await apiUpdatePackageStatus(packageId, status);
+    showToast(`Package marked ${status}.`);
+    loadDashPackages();
+    loadPackagesSection();
+  } catch (err) {
+    showToast(err.message, 'error');
+    btn.disabled = false;
+  }
+}
+
+async function deleteDashPackage(packageId, btn) {
+  btn.disabled = true;
+  try {
+    await apiDeletePackage(packageId);
+    showToast('Package deleted.');
+    loadDashPackages();
+    loadPackagesSection();
+  } catch (err) {
+    showToast(err.message, 'error');
+    btn.disabled = false;
+  }
+}
+
+async function loadDashChats() {
+  const list = document.getElementById('dash-chats-list');
+  if (!list) return;
+  list.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  const rooms = await apiGetChatRooms();
+  list.innerHTML = rooms.length ? rooms.map(room => `
+    <div class="request-card">
+      <div class="request-card-top">
+        <strong>${escHtml(room.traveler?.name || room.planner?.name || 'Traveler')}</strong>
+        <span class="request-status-badge accepted">Chat</span>
+      </div>
+      <div class="request-card-meta"><span><i class="fa-solid fa-clock"></i> ${new Date(room.updated_at).toLocaleString('en-IN')}</span></div>
+      <div class="request-card-actions">
+        <button class="request-action-btn" onclick="openExistingUserChat(${room.id})"><i class="fa-solid fa-comments"></i> Open Chat</button>
+      </div>
+    </div>`).join('') : '<p class="empty-state">No chats yet.</p>';
+}
+
+async function loadDashBlogs() {
+  const sel = document.getElementById('blog-destination');
+  if (sel && sel.options.length < 2) {
+    const dests = window._allDestinations && window._allDestinations.length ? window._allDestinations : await apiGetDestinations();
+    sel.innerHTML = dests.map(d => `<option value="${d.id}">${escHtml(d.name)}</option>`).join('');
+  }
+}
+
+async function handleDashBlogSubmit(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('dash-blog-error');
+  const btn = document.getElementById('dash-blog-submit');
+  errEl.textContent = '';
+  btn.disabled = true;
+  try {
+    await apiCreateBlog({
+      destination_id: parseInt(document.getElementById('blog-destination').value),
+      title: document.getElementById('blog-title').value,
+      content: document.getElementById('blog-content').value,
+      image_url: document.getElementById('blog-image').value || null,
+    });
+    showToast('Blog published.');
+    document.getElementById('dash-blog-form').reset();
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Publish Blog';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const today    = new Date();
     const tomorrow = new Date(today);
@@ -143,6 +222,13 @@ function parseDuration(str) {
 searchForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    if (!getToken()) {
+        window._pendingAfterLogin = () => { searchForm.dispatchEvent(new Event('submit')); };
+        openAuthModal('login');
+        showToast('You need an account to use the AI travel search. Sign in or sign up to continue.', 'error');
+        return;
+    }
+
     const origin      = document.getElementById('origin').value.trim().toUpperCase();
     const destination = document.getElementById('destination').value.trim().toUpperCase();
     const outbound    = outboundInput.value;
@@ -172,7 +258,7 @@ searchForm.addEventListener('submit', async (e) => {
     try {
         const res = await fetch(BACKEND_URL + '/complete_search/', {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
             body:    JSON.stringify({
                 flight_request: {
                     origin,
@@ -355,14 +441,55 @@ async function matchAndShowDestination(destCode) {
                 dests.find(d => lc(d.name).includes(hint)) ||
                 dests.find(d => hint.includes(lc(d.name)));
 
+    await ensureFavoritesLoaded();
+
+    // ── No destination match in our DB — fall back to a general preview ──
+    // instead of leaving the section blank, so Planners/Packages always show.
     if (!match) {
-        // No match found — clear the section
-        wrap.innerHTML = '';
+        const [pkgs, planners] = await Promise.all([
+            apiGetPackages(),
+            apiGetPlanners(),
+        ]);
+        const topPlanners = planners.slice(0, 3);
+        const topPkgs = pkgs.slice(0, 3);
+
+        if (!topPkgs.length && !topPlanners.length) { wrap.innerHTML = ''; return; }
+
+        wrap.innerHTML = `
+          <div class="matched-dest-banner">
+            <div class="matched-dest-section" style="border-top:none;">
+              <div class="matched-dest-section-title">
+                <i class="fa-solid fa-circle-info"></i>
+                No dedicated planners or packages for ${escHtml(cityHint)} yet — here are some of our top picks
+              </div>
+            </div>
+            ${topPkgs.length ? `
+            <div class="matched-dest-section">
+              <div class="matched-dest-section-title"><i class="fa-solid fa-suitcase-rolling"></i> Ready-Made Packages</div>
+              <div class="cards-grid matched-packages-grid" id="matched-packages-grid">
+                ${topPkgs.map(packageCardHtml).join('')}
+              </div>
+            </div>` : ''}
+            ${topPlanners.length ? `
+            <div class="matched-dest-section">
+              <div class="matched-dest-section-title"><i class="fa-solid fa-user-tie"></i> Connect with Expert Planners</div>
+              <div class="cards-grid matched-planners-grid" id="matched-planners-grid">
+                ${topPlanners.map(plannerCardHtml).join('')}
+              </div>
+            </div>` : ''}
+          </div>
+        `;
+        wireFavHearts(wrap);
+        wrap.querySelectorAll('.package-card').forEach(card => {
+            card.addEventListener('click', () => openPackageModal(parseInt(card.getAttribute('data-package-id'))));
+        });
+        wrap.querySelectorAll('.planner-card').forEach(card => {
+            card.addEventListener('click', () => openPlannerModal(parseInt(card.getAttribute('data-planner-id'))));
+        });
         return;
     }
 
     // Fetch packages for matched destination and planners
-    await ensureFavoritesLoaded();
     const [pkgs, planners] = await Promise.all([
         apiGetPackages(match.id),
         apiGetPlanners(),
@@ -370,7 +497,12 @@ async function matchAndShowDestination(destCode) {
 
     // Filter planners who specialise in this destination
     // (API doesn't filter by destination, so show all planners — top 3)
-    const topPlanners = planners.slice(0, 3);
+    const topPlanners = planners.filter(p =>
+        (Array.isArray(p.destination_ids) && p.destination_ids.includes(match.id)) ||
+        (p.location && lc(p.location).includes(lc(match.name))) ||
+        (p.bio && lc(p.bio).includes(lc(match.name))) ||
+        pkgs.some(pkg => pkg.planner_id === p.id)
+    ).slice(0, 3);
 
     wrap.innerHTML = `
       <div class="matched-dest-banner">
@@ -393,18 +525,26 @@ async function matchAndShowDestination(destCode) {
         </div>
         ${pkgs.length ? `
         <div class="matched-dest-section">
-          <div class="matched-dest-section-title"><i class="fa-solid fa-suitcase-rolling"></i> Curated Packages for ${escHtml(match.name)}</div>
+          <div class="matched-dest-section-title"><i class="fa-solid fa-suitcase-rolling"></i> Ready-Made Packages for ${escHtml(match.name)}</div>
           <div class="cards-grid matched-packages-grid" id="matched-packages-grid">
             ${pkgs.slice(0, 3).map(packageCardHtml).join('')}
           </div>
-        </div>` : ''}
+        </div>` : `
+        <div class="matched-dest-section">
+          <div class="matched-dest-section-title"><i class="fa-solid fa-suitcase-rolling"></i> Ready-Made Packages</div>
+          <p class="empty-state">No packages published for ${escHtml(match.name)} yet. Check back soon!</p>
+        </div>`}
         ${topPlanners.length ? `
         <div class="matched-dest-section">
-          <div class="matched-dest-section-title"><i class="fa-solid fa-user-tie"></i> Expert Travel Planners</div>
+          <div class="matched-dest-section-title"><i class="fa-solid fa-user-tie"></i> Connect with Expert Planners</div>
           <div class="cards-grid matched-planners-grid" id="matched-planners-grid">
             ${topPlanners.map(plannerCardHtml).join('')}
           </div>
-        </div>` : ''}
+        </div>` : `
+        <div class="matched-dest-section">
+          <div class="matched-dest-section-title"><i class="fa-solid fa-user-tie"></i> Connect with Expert Planners</div>
+          <p class="empty-state">No planners specialising in ${escHtml(match.name)} yet.</p>
+        </div>`}
       </div>
     `;
 
@@ -1510,6 +1650,37 @@ async function apiGetPackage(id) {
   if (!r.ok) throw new Error('Package not found');
   return r.json();
 }
+async function apiGetDestinationBlogs(destinationId) {
+  try {
+    const r = await fetch(BACKEND_URL + `/api/blogs/destination/${destinationId}`);
+    return r.ok ? r.json() : [];
+  } catch { return []; }
+}
+async function apiGetDestinationReviews(destinationId) {
+  try {
+    const r = await fetch(BACKEND_URL + `/api/reviews/destination/${destinationId}`);
+    return r.ok ? r.json() : [];
+  } catch { return []; }
+}
+async function apiGetDestinationWeather(destinationName) {
+  const today = new Date();
+  const end = new Date(today);
+  end.setDate(today.getDate() + 5);
+  try {
+    const r = await fetch(BACKEND_URL + '/search_weather/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        destination: destinationName,
+        start_date: formatDate(today),
+        end_date: formatDate(end),
+      }),
+    });
+    return r.ok ? r.json() : null;
+  } catch {
+    return null;
+  }
+}
 async function apiCreatePackage(payload) {
   const token = getToken();
   if (!token) throw new Error('Login required');
@@ -1519,6 +1690,53 @@ async function apiCreatePackage(payload) {
     body: JSON.stringify(payload),
   });
   if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.detail || 'Could not create package'); }
+  return res.json();
+}
+async function apiGetMyPackages() {
+  const token = getToken();
+  if (!token) return [];
+  try {
+    const r = await fetch(BACKEND_URL + '/api/packages/mine', { headers: { 'Authorization': `Bearer ${token}` } });
+    return r.ok ? r.json() : [];
+  } catch { return []; }
+}
+async function apiUpdatePackageStatus(packageId, status) {
+  const token = getToken();
+  if (!token) throw new Error('Login required');
+  const res = await fetch(BACKEND_URL + `/api/packages/${packageId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.detail || 'Could not update package'); }
+  return res.json();
+}
+async function apiDeletePackage(packageId) {
+  const token = getToken();
+  if (!token) throw new Error('Login required');
+  const res = await fetch(BACKEND_URL + `/api/packages/${packageId}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!res.ok && res.status !== 204) { const e = await res.json().catch(()=>({})); throw new Error(e.detail || 'Could not delete package'); }
+}
+async function apiGetChatRooms() {
+  const token = getToken();
+  if (!token) return [];
+  try {
+    const r = await fetch(BACKEND_URL + '/api/chat/rooms', { headers: { 'Authorization': `Bearer ${token}` } });
+    return r.ok ? r.json() : [];
+  } catch { return []; }
+}
+async function apiCreateBlog(payload) {
+  const token = getToken();
+  if (!token) throw new Error('Login required');
+  const res = await fetch(BACKEND_URL + '/api/blogs/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.detail || 'Could not publish blog'); }
   return res.json();
 }
 async function apiGetPlannerReviews(plannerUserId) {
@@ -1613,6 +1831,7 @@ function updateNavAuth() {
 
         const isPlanner =
             user.role === 'planner' ||
+            user.role === 'package_provider' ||
             user.role === 'admin';
 
         const firstName =
@@ -1689,6 +1908,7 @@ function updateNavAuth() {
                 selectedHotel = null;
 
                 updateNavAuth();
+                applyRoleView();
 
                 showToast('Signed out successfully.');
             });
@@ -2000,6 +2220,7 @@ async function handleAuthSubmit(e) {
         setAuth(result);
 
         updateNavAuth();
+        applyRoleView();
 
         closeAuthModal();
 
@@ -2390,7 +2611,11 @@ async function openBrowseModal(type) {
                 '<i class="fa-solid fa-map-location-dot"></i> All Destinations';
 
             if (filterBar) {
-                filterBar.classList.add('hidden');
+                filterBar.classList.remove('hidden');
+                filterBar.innerHTML = `
+                    <input type="search" id="browse-destination-search" placeholder="Search destinations">
+                    <select id="browse-state-filter"><option value="">All states</option></select>
+                `;
             }
 
             const dests =
@@ -2399,22 +2624,30 @@ async function openBrowseModal(type) {
                     ? window._allDestinations
                     : await apiGetDestinations();
 
-            grid.innerHTML =
-                dests.length
-                    ? dests.map(destCardHtml).join('')
-                    : '<p class="empty-state">No destinations available.</p>';
-
-            wireFavHearts(grid);
-
-            grid.querySelectorAll('.dest-card').forEach(card => {
-                card.addEventListener('click', () => {
-                    openDestinationModal(
-                        parseInt(
-                            card.getAttribute('data-dest-id')
-                        )
-                    );
+            const stateSel = document.getElementById('browse-state-filter');
+            const searchInput = document.getElementById('browse-destination-search');
+            if (stateSel) {
+                const states = [...new Set(dests.map(d => d.state).filter(Boolean))].sort();
+                stateSel.innerHTML = '<option value="">All states</option>' + states.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+            }
+            const renderDestinations = () => {
+                const term = (searchInput?.value || '').toLowerCase();
+                const state = stateSel?.value || '';
+                const filtered = dests.filter(d =>
+                    (!term || [d.name, d.state, d.country, d.description].some(v => (v || '').toLowerCase().includes(term))) &&
+                    (!state || d.state === state)
+                );
+                grid.innerHTML = filtered.length
+                    ? filtered.map(destCardHtml).join('')
+                    : '<p class="empty-state">No destinations match your filters.</p>';
+                wireFavHearts(grid);
+                grid.querySelectorAll('.dest-card').forEach(card => {
+                    card.addEventListener('click', () => openDestinationModal(parseInt(card.getAttribute('data-dest-id'))));
                 });
-            });
+            };
+            searchInput?.addEventListener('input', renderDestinations);
+            stateSel?.addEventListener('change', renderDestinations);
+            renderDestinations();
 
         } else if (type === 'planners') {
 
@@ -2455,6 +2688,10 @@ async function openBrowseModal(type) {
 
             if (filterBar) {
                 filterBar.classList.remove('hidden');
+                filterBar.innerHTML = `
+                    <label for="browse-dest-filter">Filter by destination</label>
+                    <select id="browse-dest-filter"><option value="">All destinations</option></select>
+                `;
             }
 
             const dests =
@@ -2463,9 +2700,10 @@ async function openBrowseModal(type) {
                     ? window._allDestinations
                     : await apiGetDestinations();
 
-            if (filterSel) {
+            const packageFilterSel = document.getElementById('browse-dest-filter');
+            if (packageFilterSel) {
 
-                filterSel.innerHTML =
+                packageFilterSel.innerHTML =
                     '<option value="">All destinations</option>' +
                     dests.map(d =>
                         `<option value="${d.id}">
@@ -2473,7 +2711,7 @@ async function openBrowseModal(type) {
                         </option>`
                     ).join('');
 
-                filterSel.onchange = async () => {
+                packageFilterSel.onchange = async () => {
 
                     grid.innerHTML = `
                         <div class="dest-loading">
@@ -2484,7 +2722,7 @@ async function openBrowseModal(type) {
 
                     const pkgs =
                         await apiGetPackages(
-                            filterSel.value || undefined
+                            packageFilterSel.value || undefined
                         );
 
                     renderPackageGrid(pkgs, grid);
@@ -2525,8 +2763,43 @@ async function openDestinationModal(id) {
   modal.classList.remove('hidden');
   body.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
   try {
-    const d = await apiGetDestination(id);
-    const pkgs = await apiGetPackages(id);
+    const [d, pkgs, blogs, reviews] = await Promise.all([
+        apiGetDestination(id),
+        apiGetPackages(id),
+        apiGetDestinationBlogs(id),
+        apiGetDestinationReviews(id)
+    ]);
+    const weather = await apiGetDestinationWeather(d.name);
+    
+    const blogsHtml = blogs.length ? blogs.map(b => `
+        <div class="review-item" style="border:1px solid var(--border); padding:16px; border-radius:10px; margin-bottom:10px;">
+            <div style="font-weight:700; font-size:1.1rem; margin-bottom:8px;">${escHtml(b.title)}</div>
+            ${b.image_url ? `<img src="${escHtml(b.image_url)}" style="width:100%; height:200px; object-fit:cover; border-radius:8px; margin-bottom:12px;">` : ''}
+            <div style="font-size:0.95rem; color:var(--text-2); line-height:1.6;">${escHtml(b.content)}</div>
+            <div style="font-size:0.8rem; color:var(--text-3); margin-top:12px;">
+                <i class="fa-solid fa-user"></i> ${escHtml(b.author?.name || 'User')} · ${new Date(b.created_at).toLocaleDateString()}
+            </div>
+        </div>
+    `).join('') : '<p class="empty-state">No blogs for this destination yet.</p>';
+
+    const listHtml = (items) => Array.isArray(items) && items.length
+      ? `<div class="itinerary-day-activities">${items.map(item => `<span>${escHtml(item)}</span>`).join('')}</div>`
+      : '<p class="empty-state">No details published yet.</p>';
+    const reviewsHtml = reviews.length
+      ? reviews.map(r => `
+          <div class="review-item">
+            <div class="review-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</div>
+            ${r.review_text ? `<div class="review-text">${escHtml(r.review_text)}</div>` : ''}
+            <div class="review-date">${new Date(r.created_at).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'})}</div>
+          </div>`).join('')
+      : '<p class="empty-state">No destination reviews yet.</p>';
+    const weatherHtml = weather ? `
+      <div class="detail-meta-row">
+        <span class="detail-meta-chip"><i class="fa-solid fa-cloud-sun"></i> ${escHtml(weather.overall_condition || 'Current weather loaded')}</span>
+        <span class="detail-meta-chip"><i class="fa-solid fa-temperature-half"></i> ${escHtml(weather.temperature_range || 'Forecast available')}</span>
+        <span class="detail-meta-chip"><i class="fa-solid fa-shield-halved"></i> Risk: ${escHtml(weather.risk_level || 'normal')}</span>
+      </div>` : '<p class="empty-state">Live travel information is temporarily unavailable.</p>';
+
     body.innerHTML = `
       <div class="detail-hero" style="background-image:url('${d.image || ''}')">
         <div class="detail-hero-overlay"></div>
@@ -2539,14 +2812,30 @@ async function openDestinationModal(id) {
       </div>
       <p class="detail-desc">${escHtml(d.description || 'A wonderful destination waiting to be explored.')}</p>
       <div class="detail-actions">
+        <button class="detail-btn-outline" id="destination-review-btn"><i class="fa-solid fa-star"></i> Leave a Review</button>
         ${favHeartHtml('destination', d.id)}
       </div>
+      <div class="detail-section-heading"><i class="fa-solid fa-cloud-sun"></i> Live Travel Information</div>
+      ${weatherHtml}
+      <div class="detail-section-heading"><i class="fa-solid fa-landmark"></i> Attractions</div>
+      ${listHtml(d.attractions)}
+      <div class="detail-section-heading"><i class="fa-solid fa-person-hiking"></i> Activities</div>
+      ${listHtml(d.activities)}
+      <div class="detail-section-heading"><i class="fa-solid fa-lightbulb"></i> Travel Tips</div>
+      ${listHtml(d.travel_tips)}
       <div class="detail-section-heading"><i class="fa-solid fa-suitcase-rolling"></i> Packages for ${escHtml(d.name)}</div>
-      <div class="cards-grid" id="dest-modal-packages">
+      <div class="cards-grid" id="dest-modal-packages" style="margin-bottom:24px">
         ${pkgs.length ? pkgs.map(packageCardHtml).join('') : '<p class="empty-state">No packages published for this destination yet.</p>'}
       </div>
+      <div class="detail-section-heading"><i class="fa-solid fa-book-open"></i> Travel Blogs & Tips</div>
+      <div id="dest-modal-blogs">
+        ${blogsHtml}
+      </div>
+      <div class="detail-section-heading"><i class="fa-solid fa-comments"></i> Customer Feedback & Reviews</div>
+      <div id="dest-modal-reviews">${reviewsHtml}</div>
     `;
     wireFavHearts(body);
+    document.getElementById('destination-review-btn')?.addEventListener('click', () => openReviewModal(null, d.id));
     body.querySelectorAll('.package-card').forEach(card => {
       card.addEventListener('click', () => { closeDestinationModal(); openPackageModal(parseInt(card.getAttribute('data-package-id'))); });
     });
@@ -2599,6 +2888,7 @@ async function openPlannerModal(id) {
       <p class="detail-desc">${escHtml(p.bio || 'This planner has not added a bio yet.')}</p>
       <div class="detail-actions">
         <button class="detail-btn-primary" id="planner-request-btn"><i class="fa-solid fa-paper-plane"></i> Request a Trip</button>
+        <button class="detail-btn-outline" id="planner-chat-btn"><i class="fa-solid fa-comment-dots"></i> Chat with Planner</button>
         <button class="detail-btn-outline" id="planner-review-btn"><i class="fa-solid fa-star"></i> Leave a Review</button>
         ${favHeartHtml('planner', p.user_id)}
       </div>
@@ -2615,6 +2905,7 @@ async function openPlannerModal(id) {
     });
     document.getElementById('planner-request-btn').addEventListener('click', () => openRequestModal({ plannerId: p.user_id }));
     document.getElementById('planner-review-btn').addEventListener('click', () => openReviewModal(p.user_id));
+    document.getElementById('planner-chat-btn').addEventListener('click', () => openUserChat(p.user_id));
   } catch (err) {
     body.innerHTML = `<p class="empty-state">${escHtml(err.message)}</p>`;
   }
@@ -2648,8 +2939,13 @@ async function openPackageModal(id) {
             </div>
           </div>`).join('')
       : '<p class="empty-state">Detailed day-by-day itinerary coming soon.</p>';
+    const chipList = (items) => Array.isArray(items) && items.length
+      ? `<div class="itinerary-day-activities">${items.map(item => `<span>${escHtml(item)}</span>`).join('')}</div>`
+      : '<p class="empty-state">Not specified.</p>';
+    const packageImage = Array.isArray(pkg.images) && pkg.images.length ? pkg.images[0] : null;
 
     body.innerHTML = `
+      ${packageImage ? `<div class="detail-hero" style="background-image:url('${escHtml(packageImage)}')"><div class="detail-hero-overlay"></div><div class="detail-hero-title">${escHtml(pkg.title)}</div></div>` : ''}
       <div class="detail-hero-title" style="color:var(--text-1);font-size:1.5rem;margin-bottom:8px">${escHtml(pkg.title)}</div>
       <div class="detail-meta-row">
         <span class="detail-meta-chip"><i class="fa-solid fa-calendar-days"></i> ${pkg.duration_days} days</span>
@@ -2664,6 +2960,16 @@ async function openPackageModal(id) {
         <button class="detail-btn-outline" id="package-view-planner-btn"><i class="fa-solid fa-user-tie"></i> View Planner</button>
         ${favHeartHtml('package', pkg.id)}
       </div>
+      <div class="detail-section-heading"><i class="fa-solid fa-hotel"></i> Hotels</div>
+      ${chipList(pkg.hotels)}
+      <div class="detail-section-heading"><i class="fa-solid fa-person-hiking"></i> Activities</div>
+      ${chipList(pkg.activities)}
+      <div class="detail-section-heading"><i class="fa-solid fa-circle-check"></i> Inclusions</div>
+      ${chipList(pkg.inclusions)}
+      <div class="detail-section-heading"><i class="fa-solid fa-circle-xmark"></i> Exclusions</div>
+      ${chipList(pkg.exclusions)}
+      <div class="detail-section-heading"><i class="fa-solid fa-calendar-check"></i> Availability</div>
+      <p class="detail-desc">${escHtml(pkg.availability?.note || 'Available on request.')}</p>
       <div class="detail-section-heading"><i class="fa-solid fa-route"></i> Day-by-Day Itinerary</div>
       <div>${daysHtml}</div>
     `;
@@ -2740,16 +3046,17 @@ async function handleRequestSubmit(e) {
    REVIEW MODAL
    ============================================================ */
 let _reviewRating = 5;
-function openReviewModal(plannerUserId) {
+function openReviewModal(plannerUserId = null, destinationId = null) {
   if (!getToken()) {
-    window._pendingAfterLogin = () => openReviewModal(plannerUserId);
+    window._pendingAfterLogin = () => openReviewModal(plannerUserId, destinationId);
     openAuthModal('login');
     showToast('Sign in to leave a review', 'error');
     return;
   }
   const modal = document.getElementById('review-modal');
   if (!modal) return;
-  document.getElementById('rev-planner-id').value = plannerUserId;
+  document.getElementById('rev-planner-id').value = plannerUserId ?? '';
+  document.getElementById('rev-destination-id').value = destinationId ?? '';
   document.getElementById('rev-text').value = '';
   document.getElementById('review-error').textContent = '';
   setStarRating(5);
@@ -2771,7 +3078,8 @@ async function handleReviewSubmit(e) {
   btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Submitting…';
   try {
     await apiCreateReview({
-      planner_id: parseInt(document.getElementById('rev-planner-id').value),
+      planner_id: document.getElementById('rev-planner-id').value ? parseInt(document.getElementById('rev-planner-id').value) : null,
+      destination_id: document.getElementById('rev-destination-id').value ? parseInt(document.getElementById('rev-destination-id').value) : null,
       rating: _reviewRating,
       review_text: document.getElementById('rev-text').value || null,
     });
@@ -2916,17 +3224,46 @@ function switchMyTripsTab(tabId) {
 function openDashboardModal() {
   const modal = document.getElementById('dashboard-modal');
   if (!modal) return;
+  const user = getUser();
+  const title = user?.role === 'package_provider'
+    ? 'Package Provider Dashboard'
+    : user?.role === 'admin'
+      ? 'Admin Dashboard'
+      : 'Travel Planner Dashboard';
+  const titleEl = document.getElementById('dashboard-title');
+  if (titleEl) titleEl.innerHTML = `<i class="fa-solid fa-briefcase"></i> ${title}`;
   modal.classList.remove('hidden');
   switchDashTab('dash-profile');
   prefillDashProfile();
   loadPackageDestOptions();
 }
-function closeDashboardModal() { document.getElementById('dashboard-modal')?.classList.add('hidden'); }
+function closeDashboardModal() {
+  // Planners can't dismiss their own workspace — there's nothing else to show them.
+  if (document.body.classList.contains('planner-view')) return;
+  document.getElementById('dashboard-modal')?.classList.add('hidden');
+}
+
+// Switches the whole page between the normal traveler interface (search hero,
+// destinations, planners, results, etc.) and a planner's dedicated workspace.
+// Planners never see the traveler homepage — only their own dashboard.
+function applyRoleView() {
+  const user = getUser();
+  const isPlanner = !!user && (user.role === 'planner' || user.role === 'package_provider' || user.role === 'admin');
+  document.body.classList.toggle('planner-view', isPlanner);
+
+  if (isPlanner) {
+    openDashboardModal(); // unhides #dashboard-modal, loads profile/packages/requests tabs
+  } else {
+    document.getElementById('dashboard-modal')?.classList.add('hidden');
+  }
+}
 function switchDashTab(tabId) {
   document.querySelectorAll('#dash-tabs .mt-tab-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-dash-tab') === tabId));
   document.querySelectorAll('#dashboard-modal .mt-panel').forEach(p => p.classList.toggle('active', p.id === tabId));
   if (tabId === 'dash-packages') loadDashPackages();
   if (tabId === 'dash-requests') loadDashRequests();
+  if (tabId === 'dash-chats') loadDashChats();
+  if (tabId === 'dash-blogs') loadDashBlogs();
 }
 function prefillDashProfile() {
   const user = getUser();
@@ -2958,6 +3295,7 @@ async function handleDashProfileSubmit(e) {
       auth.user.role = 'planner';
       setAuth(auth);
       updateNavAuth();
+      applyRoleView(); // switch them straight into the planner workspace
     }
     showToast('Planner profile saved! 🎉');
     loadPlannersSection();
@@ -2982,6 +3320,12 @@ async function handleDashPackageSubmit(e) {
       price: parseFloat(document.getElementById('pkg-price').value) || 0,
       max_travelers: parseInt(document.getElementById('pkg-max-travelers').value) || 10,
       travel_style: document.getElementById('pkg-style').value || null,
+      hotels: splitLines(document.getElementById('pkg-hotels')?.value),
+      activities: splitLines(document.getElementById('pkg-activities')?.value),
+      images: splitLines(document.getElementById('pkg-images')?.value),
+      inclusions: splitLines(document.getElementById('pkg-inclusions')?.value),
+      exclusions: splitLines(document.getElementById('pkg-exclusions')?.value),
+      availability: { note: document.getElementById('pkg-availability')?.value || 'Available on request' },
     });
     showToast('Package created! 🧳');
     document.getElementById('dash-package-form').reset();
@@ -2996,28 +3340,13 @@ async function handleDashPackageSubmit(e) {
 }
 async function loadDashPackages() {
   const list = document.getElementById('dash-packages-list');
-  const user = getUser();
   list.innerHTML = '<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
   
   try {
-    const [allPkgs, allPlanners] = await Promise.all([
-      apiGetPackages(),
-      apiGetPlanners()
-    ]);
-    
-    // Find the current user's planner profile
-    const myProfile = allPlanners.find(p => p.user_id === user.id);
-    
-    let myPkgs = allPkgs;
-    let note = `<p style="font-size:.8rem;color:var(--text-3);margin-bottom:10px">Showing all published packages (no profile found yet).</p>`;
-    
-    if (myProfile) {
-      myPkgs = allPkgs.filter(pkg => pkg.planner_id === myProfile.id);
-      note = ''; // Proper filtering works, no note needed
-    }
+    const myPkgs = await apiGetMyPackages();
 
     list.innerHTML = myPkgs.length
-      ? note + myPkgs.map(pkg => `
+      ? myPkgs.map(pkg => `
         <div class="request-card">
           <div class="request-card-top">
             <strong>${escHtml(pkg.title)}</strong>
@@ -3029,6 +3358,21 @@ async function loadDashPackages() {
           </div>
         </div>`).join('')
       : '<p class="empty-state">No packages yet. Create your first one above.</p>';
+    if (myPkgs.length) {
+      list.querySelectorAll('.request-card').forEach((card, index) => {
+        const pkg = myPkgs[index];
+        const actions = document.createElement('div');
+        actions.className = 'request-card-actions';
+        actions.innerHTML = `
+          <button class="request-action-btn" onclick="openPackageModal(${pkg.id})"><i class="fa-solid fa-eye"></i> View</button>
+          <button class="request-action-btn" onclick="setPackageStatus(${pkg.id}, '${pkg.status === 'active' ? 'inactive' : 'active'}', this)">
+            ${pkg.status === 'active' ? 'Deactivate' : 'Activate'}
+          </button>
+          <button class="request-action-btn danger" onclick="deleteDashPackage(${pkg.id}, this)"><i class="fa-solid fa-trash"></i> Delete</button>
+        `;
+        card.appendChild(actions);
+      });
+    }
   } catch (err) {
     list.innerHTML = '<p class="empty-state">Error loading packages.</p>';
   }
@@ -3045,6 +3389,7 @@ async function loadDashRequests() {
 // ── DOMContentLoaded: wire everything up ─────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   updateNavAuth();
+  applyRoleView();
   loadDestinationsSection();
   loadPlannersSection();
   loadPackagesSection();
@@ -3080,63 +3425,83 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById(pill.getAttribute('data-scroll'))?.scrollIntoView({ behavior: 'smooth' });
     });
   });
+  
+// Auth form
+const authForm = document.getElementById('auth-form');
 
-  // Auth form
-  const authForm = document.getElementById('auth-form');
+if (authForm) {
+  authForm.addEventListener('submit', handleAuthSubmit);
 
-  if (authForm) {
-    authForm.addEventListener('submit', handleAuthSubmit);
+  console.log('[AUTH] Auth form connected');
+} else {
+  console.error('[AUTH] #auth-form not found');
+}
 
-    console.log('[AUTH] Auth form connected');
-  } else {
-    console.error('[AUTH] #auth-form not found');
+
+// ========================================================
+// AUTH: LOGIN <-> SIGNUP SWITCH
+// ========================================================
+
+document.addEventListener('click', (e) => {
+  const switchLink = e.target.closest('#auth-switch-link');
+
+  if (!switchLink) return;
+
+  e.preventDefault();
+  e.stopImmediatePropagation();
+
+  const mode = switchLink.getAttribute('data-mode');
+
+  console.log('[AUTH] Switching mode to:', mode);
+
+  openAuthModal(mode);
+});
+
+
+// Auth modal close
+const authClose = document.getElementById('auth-modal-close');
+
+if (authClose) authClose.addEventListener('click', closeAuthModal);
+
+
+// ── Generic modal close buttons ──
+const modalCloseMap = {
+  'browse-modal-close': closeBrowseModal,
+  'destination-modal-close': closeDestinationModal,
+  'planner-modal-close': closePlannerModal,
+  'package-modal-close': closePackageModal,
+  'request-modal-close': closeRequestModal,
+  'review-modal-close': closeReviewModal,
+  'dashboard-modal-close': closeDashboardModal,
+};
+
+Object.entries(modalCloseMap).forEach(([id, fn]) => {
+  document.getElementById(id)?.addEventListener('click', fn);
+});
+
+  // ── Click on backdrop (not modal content) to close ──
+  // Attached directly to each overlay element instead of delegating
+  // through `document`, so clicks on cards/buttons OUTSIDE the modal
+  // (which is what opens it in the first place) can never bubble through
+  // the overlay and immediately re-close it.
+  function wireOverlayBackdropClose(overlayId, closeFn) {
+    const overlay = document.getElementById(overlayId);
+    if (!overlay) return;
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeFn();
+    });
   }
 
-  // Auth modal close
-  const authClose = document.getElementById('auth-modal-close');
-  if (authClose) authClose.addEventListener('click', closeAuthModal);
-
-  // ── Generic modal close buttons ──
-  const modalCloseMap = {
-    'browse-modal-close': closeBrowseModal,
-    'destination-modal-close': closeDestinationModal,
-    'planner-modal-close': closePlannerModal,
-    'package-modal-close': closePackageModal,
-    'request-modal-close': closeRequestModal,
-    'review-modal-close': closeReviewModal,
-    'dashboard-modal-close': closeDashboardModal,
-  };
-  Object.entries(modalCloseMap).forEach(([id, fn]) => {
-    document.getElementById(id)?.addEventListener('click', fn);
-  });
-
-  // Click outside to close modals
-  document.addEventListener('click', (e) => {
-    const authModal = document.getElementById('auth-modal');
-    const authBox   = document.getElementById('auth-modal-box');
-    if (authModal && !authModal.classList.contains('hidden') && authBox && !authBox.contains(e.target) && !e.target.closest('#nav-signin-btn') && !e.target.closest('.nav-signin-btn')) {
-      closeAuthModal();
-    }
-    const tripsModal = document.getElementById('my-trips-modal');
-    const tripsBox   = document.getElementById('my-trips-modal-box');
-    if (tripsModal && !tripsModal.classList.contains('hidden') && tripsBox && !tripsBox.contains(e.target) && !e.target.closest('#nav-my-trips')) {
-      closeMyTripsModal();
-    }
-    const overlayCloseMap = [
-      ['browse-modal', 'browse-modal-box', closeBrowseModal],
-      ['destination-modal', 'destination-modal-box', closeDestinationModal],
-      ['planner-modal', 'planner-modal-box', closePlannerModal],
-      ['package-modal', 'package-modal-box', closePackageModal],
-      ['request-modal', 'request-modal-box', closeRequestModal],
-      ['review-modal', 'review-modal-box', closeReviewModal],
-      ['dashboard-modal', 'dashboard-modal-box', closeDashboardModal],
-    ];
-    overlayCloseMap.forEach(([overlayId, boxId, fn]) => {
-      const overlay = document.getElementById(overlayId);
-      const box = document.getElementById(boxId);
-      if (overlay && !overlay.classList.contains('hidden') && box && !box.contains(e.target)) fn();
-    });
-  });
+  wireOverlayBackdropClose('auth-modal', closeAuthModal);
+  wireOverlayBackdropClose('my-trips-modal', closeMyTripsModal);
+  wireOverlayBackdropClose('browse-modal', closeBrowseModal);
+  wireOverlayBackdropClose('destination-modal', closeDestinationModal);
+  wireOverlayBackdropClose('planner-modal', closePlannerModal);
+  wireOverlayBackdropClose('package-modal', closePackageModal);
+  wireOverlayBackdropClose('request-modal', closeRequestModal);
+  wireOverlayBackdropClose('review-modal', closeReviewModal);
+  wireOverlayBackdropClose('dashboard-modal', closeDashboardModal);
+  wireOverlayBackdropClose('user-chat-modal', () => document.getElementById('user-chat-modal-close')?.click());
 
   // Save itinerary
   const saveBtn = document.getElementById('btn-save-itinerary');
@@ -3176,6 +3541,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Dashboard forms
   document.getElementById('dash-profile-form')?.addEventListener('submit', handleDashProfileSubmit);
   document.getElementById('dash-package-form')?.addEventListener('submit', handleDashPackageSubmit);
+  document.getElementById('dash-blog-form')?.addEventListener('submit', handleDashBlogSubmit);
   document.getElementById('btn-new-package')?.addEventListener('click', () => {
     document.getElementById('dash-package-form')?.classList.toggle('hidden');
   });
@@ -3198,4 +3564,164 @@ window.addEventListener('unhandledrejection', (event) => {
         '[APP UNHANDLED PROMISE ERROR]',
         event.reason
     );
+});
+
+/* ============================================================
+   REAL-TIME USER-PLANNER CHAT
+   ============================================================ */
+let currentChatSocket = null;
+let currentChatRoomId = null;
+
+async function openUserChat(plannerId) {
+    if (!getToken()) {
+        window._pendingAfterLogin = () => openUserChat(plannerId);
+        openAuthModal("login");
+        showToast("Sign in to chat with a planner", "error");
+        return;
+    }
+    
+    // Close planner modal so chat can be center stage
+    closePlannerModal();
+    
+    const modal = document.getElementById("user-chat-modal");
+    const msgsContainer = document.getElementById("user-chat-messages");
+    if (!modal || !msgsContainer) return;
+    
+    modal.classList.remove("hidden");
+    msgsContainer.innerHTML = `<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>`;
+    
+    try {
+        // Start or get chat room
+        const token = getToken();
+        const roomRes = await fetch(BACKEND_URL + `/api/chat/rooms/start/${plannerId}`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        
+        if (!roomRes.ok) throw new Error("Could not start chat");
+        const room = await roomRes.json();
+        currentChatRoomId = room.id;
+        
+        document.getElementById("user-chat-title").innerHTML = `<i class="fa-solid fa-comments"></i> Chat with ${escHtml(room.planner.name)}`;
+        
+        // Fetch history
+        const histRes = await fetch(BACKEND_URL + `/api/chat/rooms/${room.id}/messages`, {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        const messages = await histRes.json();
+        
+        msgsContainer.innerHTML = "";
+        messages.forEach(m => renderUserChatMessage(m));
+        scrollToChatBottom();
+        
+        // Connect WebSocket
+        if (currentChatSocket) { currentChatSocket.close(); }
+        // Determine WS URL
+        const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsHost = BACKEND_URL.replace(/^https?:\/\//, "");
+        const wsUrl = `${wsProtocol}//${wsHost}/api/chat/ws/${room.id}?token=${token}`;
+        
+        currentChatSocket = new WebSocket(wsUrl);
+        
+        currentChatSocket.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            renderUserChatMessage(msg);
+            scrollToChatBottom();
+        };
+        
+    } catch (err) {
+        msgsContainer.innerHTML = `<p class="empty-state">${escHtml(err.message)}</p>`;
+    }
+}
+
+async function openExistingUserChat(roomId) {
+    if (!getToken()) {
+        window._pendingAfterLogin = () => openExistingUserChat(roomId);
+        openAuthModal("login");
+        showToast("Sign in to open chats", "error");
+        return;
+    }
+
+    const modal = document.getElementById("user-chat-modal");
+    const msgsContainer = document.getElementById("user-chat-messages");
+    if (!modal || !msgsContainer) return;
+
+    modal.classList.remove("hidden");
+    msgsContainer.innerHTML = `<div class="dest-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>`;
+
+    try {
+        const token = getToken();
+        currentChatRoomId = roomId;
+        const histRes = await fetch(BACKEND_URL + `/api/chat/rooms/${roomId}/messages`, {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (!histRes.ok) throw new Error("Could not load chat");
+        const messages = await histRes.json();
+
+        document.getElementById("user-chat-title").innerHTML = `<i class="fa-solid fa-comments"></i> Chat`;
+        msgsContainer.innerHTML = "";
+        messages.forEach(m => renderUserChatMessage(m));
+        scrollToChatBottom();
+
+        if (currentChatSocket) currentChatSocket.close();
+        const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsHost = BACKEND_URL.replace(/^https?:\/\//, "");
+        currentChatSocket = new WebSocket(`${wsProtocol}//${wsHost}/api/chat/ws/${roomId}?token=${token}`);
+        currentChatSocket.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            renderUserChatMessage(msg);
+            scrollToChatBottom();
+        };
+    } catch (err) {
+        msgsContainer.innerHTML = `<p class="empty-state">${escHtml(err.message)}</p>`;
+    }
+}
+
+function renderUserChatMessage(msg) {
+    const msgsContainer = document.getElementById("user-chat-messages");
+    const user = getUser();
+    const isMe = msg.sender_id === user.id;
+    
+    const div = document.createElement("div");
+    div.style.padding = "10px 14px";
+    div.style.borderRadius = "12px";
+    div.style.maxWidth = "80%";
+    div.style.wordWrap = "break-word";
+    
+    if (isMe) {
+        div.style.backgroundColor = "var(--brand)";
+        div.style.color = "#fff";
+        div.style.alignSelf = "flex-end";
+    } else {
+        div.style.backgroundColor = "var(--surface-1)";
+        div.style.border = "1px solid var(--border)";
+        div.style.alignSelf = "flex-start";
+    }
+    
+    div.textContent = msg.content;
+    msgsContainer.appendChild(div);
+}
+
+function scrollToChatBottom() {
+    const container = document.getElementById("user-chat-messages");
+    if (container) container.scrollTop = container.scrollHeight;
+}
+
+document.getElementById("user-chat-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = document.getElementById("user-chat-input");
+    const val = input.value.trim();
+    if (!val || !currentChatSocket || currentChatSocket.readyState !== WebSocket.OPEN) return;
+    
+    currentChatSocket.send(val);
+    input.value = "";
+});
+
+document.getElementById("user-chat-modal-close")?.addEventListener("click", () => {
+    document.getElementById("user-chat-modal").classList.add("hidden");
+    if (currentChatSocket) {
+        currentChatSocket.close();
+        currentChatSocket = null;
+    }
+    currentChatRoomId = null;
 });

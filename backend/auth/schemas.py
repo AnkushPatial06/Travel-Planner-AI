@@ -25,8 +25,8 @@ class SignupRequest(BaseModel):
     @field_validator("role")
     @classmethod
     def valid_role(cls, v: str) -> str:
-        if v not in ("traveler", "planner", "admin"):
-            raise ValueError("Role must be traveler, planner, or admin")
+        if v not in ("traveler", "planner", "package_provider", "admin"):
+            raise ValueError("Role must be traveler, planner, package_provider, or admin")
         return v
 
 

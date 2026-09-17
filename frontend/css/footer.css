@@ -1,0 +1,105 @@
+/* ============================================================
+   Footer — the site-wide footer, including the feedback form and reviews strip.
+   ============================================================ */
+
+/* ============================================================
+   SITE FOOTER
+   ============================================================ */
+.site-footer {
+    background: var(--brand-dark);
+    color: rgba(255,255,255,.82);
+    margin-top: 60px;
+    padding: 56px 0 0;
+}
+.footer-top {
+    max-width: 1280px; margin: 0 auto; padding: 0 32px 40px;
+    display: grid; grid-template-columns: 1.4fr 1fr 1fr 1.6fr; gap: 40px;
+    border-bottom: 1px solid rgba(255,255,255,.12);
+}
+.footer-col h4 {
+    font-family: var(--font-display); color: #fff; font-size: 1rem;
+    margin-bottom: 16px; letter-spacing: .02em;
+}
+.footer-logo {
+    font-family: var(--font-display); font-weight: 700; font-size: 1.3rem;
+    color: #fff; display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+}
+.footer-logo i { color: var(--brand-accent); }
+.footer-brand p { font-size: .9rem; line-height: 1.6; color: rgba(255,255,255,.65); max-width: 320px; }
+.footer-social { display: flex; gap: 10px; margin-top: 18px; }
+.footer-social a {
+    width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,.08);
+    display: flex; align-items: center; justify-content: center; color: #fff;
+    transition: background .2s, transform .2s;
+}
+.footer-social a:hover { background: var(--brand-light); transform: translateY(-2px); }
+.footer-col ul { list-style: none; padding: 0; margin: 0; }
+.footer-col ul li { margin-bottom: 10px; }
+.footer-col ul a {
+    color: rgba(255,255,255,.65); text-decoration: none; font-size: .9rem; transition: color .15s;
+}
+.footer-col ul a:hover { color: #fff; }
+
+/* Feedback form */
+.footer-feedback-sub { font-size: .85rem; color: rgba(255,255,255,.6); margin-bottom: 14px; }
+.footer-feedback-form { display: flex; flex-direction: column; gap: 12px; }
+.footer-star-rating { display: flex; gap: 6px; }
+.footer-star {
+    background: none; border: none; cursor: pointer; padding: 4px;
+    color: rgba(255,255,255,.35); font-size: 1.15rem; transition: color .15s, transform .15s;
+}
+.footer-star:hover { transform: scale(1.15); }
+.footer-star.active, .footer-star.hovered { color: var(--brand-accent); }
+.footer-feedback-form textarea {
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
+    border-radius: var(--r-sm); color: #fff; padding: 10px 12px; font-family: var(--font-body);
+    font-size: .88rem; resize: vertical; min-height: 44px;
+}
+.footer-feedback-form textarea::placeholder { color: rgba(255,255,255,.45); }
+.footer-feedback-form textarea:focus { outline: none; border-color: var(--brand-light); }
+.footer-feedback-submit {
+    background: var(--brand-light); color: #fff; border: none; border-radius: var(--r-sm);
+    padding: 10px 16px; font-weight: 600; font-size: .88rem; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    transition: background .2s; align-self: flex-start;
+}
+.footer-feedback-submit:hover { background: var(--brand); }
+.footer-feedback-submit:disabled { opacity: .6; cursor: not-allowed; }
+.footer-feedback-msg { font-size: .82rem; min-height: 18px; }
+.footer-feedback-msg.success { color: #6fe3a4; }
+.footer-feedback-msg.error { color: #ff9b9b; }
+
+/* Reviews strip */
+.footer-reviews { max-width: 1280px; margin: 0 auto; padding: 36px 32px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.footer-reviews h4 {
+    font-family: var(--font-display); color: #fff; font-size: 1rem; margin-bottom: 18px;
+    display: flex; align-items: center; gap: 10px;
+}
+.footer-reviews-track {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;
+}
+.footer-review-card {
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+    border-radius: var(--r-md); padding: 16px 18px;
+}
+.footer-review-stars { color: var(--brand-accent); font-size: .8rem; margin-bottom: 8px; }
+.footer-review-text {
+    font-size: .87rem; line-height: 1.5; color: rgba(255,255,255,.85);
+    margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.footer-review-author { font-size: .8rem; color: rgba(255,255,255,.55); font-weight: 600; }
+
+.footer-bottom {
+    max-width: 1280px; margin: 0 auto; padding: 20px 32px 24px;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+    font-size: .8rem; color: rgba(255,255,255,.5);
+}
+
+@media (max-width: 900px) {
+    .footer-top { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 560px) {
+    .footer-top { grid-template-columns: 1fr; padding: 0 20px 32px; }
+    .footer-reviews, .footer-bottom { padding-left: 20px; padding-right: 20px; }
+    .footer-bottom { flex-direction: column; }
+}

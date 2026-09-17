@@ -84,7 +84,7 @@ def my_trips(
 ):
     """List all trip requests where the user is the traveler or planner."""
     from backend.database.models import UserRole
-    if current_user.role in (UserRole.planner,):
+    if current_user.role in (UserRole.planner, UserRole.package_provider, UserRole.admin):
         # Planner sees requests directed to them
         trips = db.query(TripRequest).filter(
             TripRequest.planner_id == current_user.id

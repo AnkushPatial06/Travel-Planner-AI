@@ -1,0 +1,437 @@
+/* ============================================================
+   Modals — all modal overlays, detail modals, matched-destination banner, cards, toasts, mobile nav.
+   ============================================================ */
+
+/* ============================================================
+   MODALS
+   ============================================================ */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 9999; padding: 20px;
+    opacity: 1; transition: opacity .2s;
+}
+.modal-overlay.hidden { opacity: 0; pointer-events: none; }
+.modal-box {
+    background: #fff; width: 100%; max-width: 400px;
+    border-radius: 16px; padding: 32px; position: relative;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+    transform: translateY(0); transition: transform .3s var(--ease);
+}
+.modal-overlay.hidden .modal-box { transform: translateY(20px); }
+.modal-box-large { max-width: 600px; }
+.modal-close {
+    position: absolute; top: 16px; right: 16px;
+    background: transparent; border: none; color: var(--text-light);
+    font-size: 1.2rem; cursor: pointer; transition: color .2s;
+}
+.modal-close:hover { color: var(--text-dark); }
+.modal-box h2 { font-size: 1.4rem; color: var(--text-dark); margin-bottom: 24px; font-family: var(--font-display); }
+
+.auth-form { display: flex; flex-direction: column; gap: 16px; }
+.auth-field { margin-bottom: 0; }
+.auth-field input, .auth-field select {
+    width: 100%; padding: 12px; border: 1px solid var(--border);
+    border-radius: 8px; font-size: .95rem; font-family: var(--font-body);
+    transition: border-color .2s;
+}
+.auth-field input:focus, .auth-field select:focus {
+    border-color: var(--brand); outline: none;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+.auth-submit-btn {
+    background: var(--brand); color: #fff; border: none;
+    padding: 14px; border-radius: 8px; font-weight: 600; font-size: 1rem;
+    cursor: pointer; transition: all .2s; margin-top: 8px;
+}
+.auth-submit-btn:hover { background: var(--brand-dark); transform: translateY(-1px); }
+.auth-submit-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+.auth-error { color: #dc2626; font-size: .85rem; min-height: 20px; }
+.auth-switch { text-align: center; font-size: .9rem; color: var(--text-light); margin-top: 10px; }
+.auth-switch a { color: var(--brand); font-weight: 600; }
+
+.my-trips-list {
+    max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+}
+.saved-trip-card {
+    border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+    transition: all .2s var(--ease);
+}
+.saved-trip-card:hover { border-color: var(--brand-light); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+.stc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.stc-dest { font-weight: 700; color: var(--text-dark); display: flex; align-items: center; gap: 6px; }
+.stc-dest i { color: var(--brand); }
+.stc-date { font-size: .8rem; color: var(--text-light); }
+.stc-preview { font-size: .85rem; color: var(--text-muted); line-height: 1.5; }
+
+/* ============================================================
+   AI MATCHED DESTINATION (Results Area)
+   ============================================================ */
+#matched-destination-wrap { grid-column: 1 / -1; margin-top: 24px; }
+.matched-dest-banner {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+.matched-dest-hero {
+    position: relative; padding: 24px;
+    background-size: cover; background-position: center;
+    min-height: 220px; display: flex; align-items: flex-end;
+}
+.matched-dest-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, rgba(0,0,0,0.1) 100%);
+}
+.matched-dest-content { position: relative; z-index: 1; color: #fff; width: 100%; }
+.matched-dest-label {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--brand-accent); color: var(--brand-dark);
+    padding: 4px 10px; border-radius: 20px; font-size: .75rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;
+}
+.matched-dest-name { font-size: 2rem; font-weight: 800; font-family: var(--font-display); margin-bottom: 8px; line-height: 1.1; }
+.matched-dest-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: .85rem; font-weight: 500; margin-bottom: 12px; color: rgba(255,255,255,0.9); }
+.matched-dest-desc { font-size: .9rem; line-height: 1.5; color: rgba(255,255,255,0.8); max-width: 800px; margin-bottom: 16px; }
+.matched-dest-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.matched-dest-btn {
+    background: #fff; color: var(--text-dark); border: none;
+    padding: 10px 18px; border-radius: 10px; font-weight: 600; font-size: .85rem;
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    transition: all .2s;
+}
+.matched-dest-btn:hover { background: var(--surface-2); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.matched-dest-btn.outline { background: rgba(0,0,0,0.4); color: #fff; border: 1px solid rgba(255,255,255,0.3); backdrop-filter: blur(4px); }
+.matched-dest-btn.outline:hover { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.5); }
+.matched-dest-section { padding: 24px; border-top: 1px solid var(--border); background: var(--surface-2); }
+.matched-dest-section-title { font-size: 1.1rem; font-weight: 700; color: var(--text-dark); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+/* ============================================================
+   DESTINATIONS & PLANNERS SECTIONS
+   ============================================================ */
+.landing-section { margin-top: 60px; padding-top: 40px; border-top: 1px solid var(--border-light); }
+.section-title { font-size: 1.6rem; color: var(--text-dark); margin-bottom: 6px; display: flex; align-items: center; gap: 10px; }
+.section-title i { color: var(--brand); }
+.section-subtitle { color: var(--text-light); margin-bottom: 24px; font-size: 1.05rem; }
+
+.cards-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 20px;
+}
+.dest-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 16px;
+    overflow: hidden; transition: all .2s var(--ease); cursor: pointer;
+}
+.dest-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.08); border-color: var(--brand-light); }
+.dest-card-img {
+    height: 160px; background-size: cover; background-position: center;
+    position: relative; background-color: var(--bg-body);
+}
+.dest-badge {
+    position: absolute; top: 12px; left: 12px;
+    background: rgba(0,0,0,0.6); color: #fff; backdrop-filter: blur(4px);
+    padding: 4px 10px; border-radius: 20px; font-size: .75rem; font-weight: 600;
+}
+.dest-card-body { padding: 16px; }
+.dest-card-name { font-size: 1.15rem; color: var(--text-dark); margin-bottom: 4px; }
+.dest-card-state { font-size: .85rem; color: var(--text-light); display: flex; align-items: center; gap: 4px; margin-bottom: 12px; }
+.dest-card-budget { font-size: .9rem; font-weight: 600; color: var(--text); display: inline-flex; background: var(--bg-body); padding: 4px 10px; border-radius: 6px; }
+
+.planner-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 16px;
+    padding: 20px; display: flex; flex-direction: column; gap: 12px; transition: all .2s var(--ease);
+}
+.planner-card:hover { border-color: var(--brand-light); box-shadow: 0 8px 20px rgba(0,0,0,0.05); }
+.planner-card-avatar {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--brand), var(--brand-light));
+    color: #fff; font-size: 1.5rem; display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+}
+.planner-card-name { font-size: 1.1rem; color: var(--text-dark); margin: 0; }
+.planner-location { font-size: .85rem; color: var(--text-light); margin: 0; }
+.planner-meta {
+    display: flex; gap: 12px; font-size: .8rem; color: var(--text-muted);
+    background: var(--bg-body); padding: 8px 12px; border-radius: 8px; flex-wrap: wrap;
+}
+.pm-rating { font-weight: 700; color: var(--warning); }
+.planner-bio { font-size: .85rem; color: var(--text); line-height: 1.5; margin-top: 4px; }
+.dest-loading { text-align: center; padding: 40px; color: var(--text-light); font-size: 1.5rem; }
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+.tp-toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: #1f2937; color: #fff; padding: 14px 20px;
+    border-radius: 8px; font-size: .95rem; font-weight: 500;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    transform: translateY(100px); opacity: 0; pointer-events: none;
+    transition: all .3s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 10000;
+}
+.tp-toast-success i { color: #10b981; }
+.tp-toast-error i { color: #ef4444; }
+.tp-toast-show { transform: translateY(0); opacity: 1; pointer-events: auto; }
+
+/* Itinerary Toolbar Actions */
+.itinerary-toolbar-actions { display: flex; gap: 12px; }
+.save-btn {
+    background: var(--bg-body); color: var(--brand); border: 1px solid var(--border);
+    padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all .2s;
+}
+.save-btn:hover { background: var(--brand-light); color: var(--brand-dark); border-color: var(--brand); }
+
+/* ============================================================
+   MOBILE NAV / HAMBURGER
+   ============================================================ */
+.nav-hamburger {
+    display: none;
+    width: 38px; height: 38px;
+    align-items: center; justify-content: center;
+    color: #fff; font-size: 1.05rem;
+    background: rgba(255,255,255,.1);
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+.nav-hamburger:hover { background: rgba(255,255,255,.2); }
+
+@media (max-width: 860px) {
+    .nav-hamburger { display: flex; }
+    .nav-pills {
+        position: absolute;
+        top: 64px; left: 0; right: 0;
+        background: var(--brand);
+        flex-direction: column;
+        align-items: stretch;
+        gap: 2px;
+        padding: 10px 16px 16px;
+        box-shadow: 0 12px 24px rgba(0,0,0,.35);
+        display: none;
+        max-height: calc(100vh - 64px);
+        overflow-y: auto;
+    }
+    .nav-pills.open { display: flex; }
+    .nav-pill { justify-content: flex-start; padding: 10px 12px; }
+    .ai-badge { align-self: flex-start; margin: 6px 0 0; }
+}
+@media (max-width: 480px) {
+    .brand-name { font-size: 1.05rem; }
+    .topnav-inner { padding: 0 14px; }
+    .nav-user-name span, .nav-user-name { font-size: .8rem; }
+    .nav-my-trips-btn span, .nav-logout-btn span {}
+}
+
+/* ============================================================
+   SECTION HEADER ROW + VIEW-ALL BUTTON
+   ============================================================ */
+.section-title-row {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 24px;
+}
+.section-title-row .section-title,
+.section-title-row .section-subtitle { margin-bottom: 0; }
+.section-viewall-btn {
+    background: var(--surface); color: var(--brand);
+    border: 1.5px solid var(--border); padding: 9px 16px;
+    border-radius: 30px; font-weight: 600; font-size: .85rem;
+    display: inline-flex; align-items: center; gap: 8px;
+    white-space: nowrap; transition: all .2s var(--ease);
+}
+.section-viewall-btn:hover { background: var(--brand); color: #fff; border-color: var(--brand); }
+
+/* ============================================================
+   CARD FAVORITE HEART
+   ============================================================ */
+.card-fav-btn {
+    position: absolute; top: 12px; right: 12px; z-index: 2;
+    width: 34px; height: 34px; border-radius: 50%;
+    background: rgba(255,255,255,.92); color: var(--text-3);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.18);
+    transition: all .2s var(--ease);
+}
+.card-fav-btn:hover { transform: scale(1.1); color: var(--red); }
+.card-fav-btn.active { color: var(--red); }
+.card-fav-btn.active i { font-weight: 900; }
+.planner-card, .dest-card, .package-card { position: relative; }
+
+/* ============================================================
+   PACKAGE CARDS
+   ============================================================ */
+.package-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    overflow: hidden; transition: all .2s var(--ease); cursor: pointer; display: flex; flex-direction: column;
+}
+.package-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); border-color: var(--brand-light); }
+.package-card-top {
+    padding: 18px 18px 0;
+}
+.package-card-title { font-size: 1.1rem; font-weight: 700; color: var(--text-1); margin-bottom: 6px; }
+.package-card-desc { font-size: .85rem; color: var(--text-3); line-height: 1.5; margin-bottom: 12px; min-height: 40px; }
+.package-card-meta {
+    display: flex; gap: 10px; flex-wrap: wrap; font-size: .78rem; color: var(--text-2);
+    margin-bottom: 14px;
+}
+.package-card-meta span { background: var(--surface-2); padding: 4px 10px; border-radius: 20px; display: inline-flex; align-items: center; gap: 5px; }
+.package-card-bottom {
+    margin-top: auto; display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-top: 1px solid var(--border); background: var(--surface-2);
+}
+.package-card-price { font-weight: 800; color: var(--brand); font-size: 1.05rem; }
+.package-card-price small { font-weight: 500; color: var(--text-3); font-size: .7rem; }
+
+/* ============================================================
+   LARGE / XL MODALS
+   ============================================================ */
+.modal-box-xl { max-width: 860px; max-height: 88vh; overflow-y: auto; }
+.browse-filter-bar {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;
+}
+.browse-filter-bar label { font-size: .82rem; font-weight: 600; color: var(--text-2); }
+.browse-filter-bar select,
+.browse-filter-bar input {
+    padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 8px;
+    font-size: .85rem; color: var(--text-1); background: var(--surface);
+}
+.browse-grid { min-height: 120px; }
+
+/* ============================================================
+   TABS INSIDE MODALS (My Trips / Dashboard)
+   ============================================================ */
+.mt-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+.mt-tab-btn {
+    padding: 9px 16px; font-size: .85rem; font-weight: 600; color: var(--text-3);
+    border-bottom: 3px solid transparent; margin-bottom: -1px; font-family: inherit; background: transparent;
+}
+.mt-tab-btn:hover { color: var(--brand-light); }
+.mt-tab-btn.active { color: var(--brand); border-bottom-color: var(--brand-light); }
+.mt-panel { display: none; }
+.mt-panel.active { display: block; }
+
+/* ============================================================
+   DETAIL MODAL BODY (Destination / Planner / Package)
+   ============================================================ */
+.detail-hero {
+    height: 200px; border-radius: 14px; background-size: cover; background-position: center;
+    background-color: var(--surface-2); margin-bottom: 20px; position: relative;
+    display: flex; align-items: flex-end; padding: 16px;
+}
+.detail-hero-overlay {
+    position: absolute; inset: 0; border-radius: 14px;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,.55) 100%);
+}
+.detail-hero-title {
+    position: relative; z-index: 1; color: #fff; font-family: var(--font-display);
+    font-size: 1.6rem; font-weight: 800;
+}
+.detail-meta-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+.detail-meta-chip {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px;
+    padding: 6px 14px; font-size: .82rem; color: var(--text-2); display: inline-flex; align-items: center; gap: 6px;
+}
+.detail-desc { color: var(--text-2); font-size: .92rem; line-height: 1.7; margin-bottom: 22px; }
+.detail-section-heading {
+    font-size: 1rem; font-weight: 700; color: var(--text-1); margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px; padding-top: 6px; border-top: 1px solid var(--border);
+    padding-top: 18px;
+}
+.detail-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 22px; }
+.detail-btn-primary {
+    background: linear-gradient(135deg, var(--brand-light), #0052cc); color: #fff;
+    padding: 11px 20px; border-radius: 10px; font-weight: 700; font-size: .9rem;
+    display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 16px rgba(0,108,228,.35);
+}
+.detail-btn-primary:hover { transform: translateY(-1px); }
+.detail-btn-outline {
+    background: var(--surface); color: var(--brand); border: 1.5px solid var(--border);
+    padding: 11px 20px; border-radius: 10px; font-weight: 700; font-size: .9rem;
+    display: inline-flex; align-items: center; gap: 8px;
+}
+.detail-btn-outline:hover { border-color: var(--brand-light); background: var(--surface-2); }
+
+.planner-avatar-lg {
+    width: 76px; height: 76px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--brand), var(--brand-light)); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 2rem;
+}
+.planner-detail-header { display: flex; gap: 18px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
+.planner-detail-name { font-size: 1.3rem; font-weight: 800; color: var(--text-1); font-family: var(--font-display); }
+.planner-detail-rating { color: var(--brand-accent); font-weight: 700; }
+
+.itinerary-day-item {
+    display: flex; gap: 14px; padding: 14px 0; border-bottom: 1px dashed var(--border);
+}
+.itinerary-day-item:last-child { border-bottom: none; }
+.itinerary-day-num {
+    width: 34px; height: 34px; border-radius: 50%; background: var(--brand); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0;
+}
+.itinerary-day-title { font-weight: 700; color: var(--text-1); margin-bottom: 4px; }
+.itinerary-day-desc { font-size: .85rem; color: var(--text-2); line-height: 1.55; }
+.itinerary-day-activities { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+.itinerary-day-activities span {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px;
+    padding: 3px 10px; font-size: .75rem; color: var(--text-2);
+}
+
+.review-item { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.review-item:last-child { border-bottom: none; }
+.review-stars { color: var(--brand-accent); font-size: .85rem; margin-bottom: 4px; }
+.review-text { font-size: .88rem; color: var(--text-2); line-height: 1.55; }
+.review-date { font-size: .75rem; color: var(--text-3); margin-top: 4px; }
+
+/* Star picker (review modal) */
+.star-picker { display: flex; gap: 6px; font-size: 1.4rem; color: var(--border-hover); }
+.star-picker i { cursor: pointer; transition: color .15s; }
+.star-picker i.active { color: var(--brand-accent); }
+
+/* ============================================================
+   TRIP REQUEST / DASHBOARD LIST CARDS
+   ============================================================ */
+.request-card {
+    border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 12px;
+}
+.request-card-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.request-status-badge {
+    font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+    padding: 4px 10px; border-radius: 20px;
+}
+.request-status-badge.pending   { background: var(--amber-bg); color: var(--amber); }
+.request-status-badge.accepted  { background: #e0edff; color: var(--brand-light); }
+.request-status-badge.rejected  { background: var(--red-bg); color: var(--red); }
+.request-status-badge.completed { background: var(--green-bg); color: var(--green); }
+.request-card-meta { font-size: .82rem; color: var(--text-2); display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
+.request-card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.request-action-btn {
+    font-size: .78rem; font-weight: 600; padding: 6px 12px; border-radius: 8px;
+    border: 1px solid var(--border); color: var(--text-2); background: var(--surface);
+}
+.request-action-btn:hover { border-color: var(--brand-light); color: var(--brand-light); }
+.request-action-btn.danger:hover { border-color: var(--red); color: var(--red); }
+
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text-3); font-size: .9rem; }
+
+/* Nav extras for logged-in users */
+.nav-dash-btn, .nav-planner-btn {
+    background: rgba(255,255,255,0.1); color: #fff; border: none;
+    padding: 5px 12px; border-radius: 6px; font-size: .8rem; cursor: pointer;
+    transition: background .2s; white-space: nowrap;
+}
+.nav-dash-btn:hover, .nav-planner-btn:hover { background: rgba(255,255,255,0.25); }
+
+/* ============================================================
+   RESPONSIVE — FEATURE MODALS
+   ============================================================ */
+@media (max-width: 700px) {
+    .modal-box-xl { max-width: 96vw; padding: 22px; }
+    .planner-detail-header { flex-direction: column; align-items: flex-start; }
+    .detail-hero { height: 150px; }
+    .nav-user-menu { flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .mt-tabs { overflow-x: auto; }
+}
+@media (max-width: 500px) {
+    .modal-box { padding: 22px 18px; }
+    .cards-grid { grid-template-columns: 1fr; }
+    .browse-filter-bar { flex-direction: column; align-items: stretch; }
+}
+

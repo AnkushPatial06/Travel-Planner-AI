@@ -2,7 +2,7 @@ import asyncio
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -53,6 +53,11 @@ from backend.api.trips import router as trips_router
 from backend.api.reviews import router as reviews_router
 from backend.api.favorites import router as favorites_router
 from backend.api.ai_trips import router as ai_trips_router
+from backend.api.chat import router as chat_router
+from backend.api.blogs import router as blogs_router
+from backend.api.site_feedback import router as site_feedback_router
+from backend.auth.utils import get_current_user
+from backend.database.models import User
 
 app = FastAPI(title="Travel Planning API", version="2.0.0")
 
@@ -75,6 +80,9 @@ app.include_router(trips_router)
 app.include_router(reviews_router)
 app.include_router(favorites_router)
 app.include_router(ai_trips_router)
+app.include_router(chat_router, prefix="/api/chat", tags=["Chat"])
+app.include_router(blogs_router, prefix="/api/blogs", tags=["Blogs"])
+app.include_router(site_feedback_router)
 
 
 # ── Startup: create tables if not already present ───────────────────────────
@@ -225,6 +233,7 @@ async def get_budget_analysis(budget_request: BudgetRequest):
 async def complete_travel_search(
     flight_request: FlightRequest,
     hotel_request: Optional[HotelRequest] = None,
+    current_user: User = Depends(get_current_user),
 ):
     """
     Master search endpoint — runs flights, hotels, weather, and budget
