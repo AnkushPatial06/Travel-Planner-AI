@@ -1,108 +1,184 @@
-# AI Travel Planner
+# ✈️ Travel Planner AI
 
-This project is split into a FastAPI backend and a Streamlit frontend.
+An AI-powered full-stack travel planning platform that helps users discover destinations, search flights and hotels, check weather conditions, estimate trip budgets, and generate personalized travel itineraries.
+
+The project combines a modern web frontend with a FastAPI backend, AI-powered travel planning, external travel APIs, authentication, database support, and deployment-ready configuration.
+
+---
+
+## 🌍 Project Overview
+
+Travel Planner AI is designed to simplify the complete travel-planning process in one platform.
+
+Instead of searching for flights, hotels, weather information, budgets, and itineraries separately, users can provide their travel requirements and get relevant travel information through a single application.
+
+The platform supports:
+
+- User registration and authentication
+- Destination exploration
+- Flight search
+- Hotel search
+- Weather information
+- Trip budget estimation
+- AI-powered travel analysis
+- Personalized itinerary generation
+- Trip planning
+- Responsive web interface
+- Backend APIs
+- Database integration
+
+---
+
+## ✨ Key Features
+
+### 🔐 User Authentication
+
+Users can create an account and securely sign in to the platform.
+
+Features include:
+
+- User registration
+- User login
+- Authentication
+- JWT-based authentication
+- Protected user functionality
+- Secure environment-based configuration
+
+---
+
+### ✈️ Flight Search
+
+Users can search for available flights by providing:
+
+- Origin
+- Destination
+- Travel date
+- Number of travelers
+- Budget/preferences
+
+Flight information is retrieved through external travel search APIs.
+
+---
+
+### 🏨 Hotel Search
+
+The platform allows users to search for accommodation based on their destination and travel requirements.
+
+Users can explore:
+
+- Hotels
+- Pricing information
+- Ratings
+- Locations
+- Available accommodation options
+
+---
+
+### 🌤️ Weather Information
+
+Users can check weather information for their selected destination.
+
+Weather data can be used while planning the trip to make better travel decisions.
+
+The application integrates weather information through an external weather API.
+
+---
+
+### 💰 Travel Budget Estimation
+
+The application provides travel budget analysis based on factors such as:
+
+- Flights
+- Accommodation
+- Food
+- Local transportation
+- Activities
+- Other estimated expenses
+
+The system helps users understand the expected cost of their trip.
+
+---
+
+### 🤖 AI-Powered Travel Planning
+
+The core feature of the application is AI-assisted travel planning.
+
+The system can analyze:
+
+- Destination
+- Travel duration
+- Budget
+- User preferences
+- Travel requirements
+- Available travel information
+
+and generate personalized travel recommendations and itineraries.
+
+---
+
+### 🗓️ Personalized Itinerary
+
+The application can generate a structured trip itinerary containing:
+
+- Day-wise travel plans
+- Places to visit
+- Activities
+- Travel suggestions
+- Budget considerations
+- Destination recommendations
+
+This helps users organize their complete trip.
+
+---
+
+### 📊 Travel Analysis
+
+The platform provides additional travel analysis including:
+
+- Budget analysis
+- Weather information
+- Travel information
+- Destination insights
+- AI-generated recommendations
+
+---
+
+## 🏗️ System Architecture
 
 ```text
-travel planner agentic ai/
-|-- backend/
-|   |-- config.py            # configuration loader and logger setup
-|   |-- models.py            # Pydantic models (request and response schemas)
-|   |-- search_service.py    # SerpAPI search, mock data, and data formatting
-|   |-- ai_service.py        # CrewAI LLM initialization, recommendations, and itinerary planner
-|   `-- main.py              # FastAPI app and API endpoint handlers
-|-- frontend/
-|   `-- app.py               # Streamlit travel UI
-|-- .env
-|-- .env.example
-|-- requirements.txt
-```
-
-## Backend Pipeline
-
-The backend is now clean and flat:
-
-1. `backend/main.py` initializes the FastAPI app and directly defines the endpoint routes.
-2. `backend/config.py` loads environment variables and configures application-wide logging.
-3. `backend/models.py` defines type-safe Pydantic request and response models.
-4. `backend/search_service.py` handles live/demo flight and hotel searches and formats search data into text.
-5. `backend/ai_service.py` executes LLM-driven flight/hotel analysis recommendations and generates final day-by-day travel itineraries using CrewAI.
-
-
-## Is FastAPI Used?
-
-Yes. FastAPI is used in `backend/main.py`.
-
-The backend exposes these API routes:
-
-- `GET /`
-- `POST /search_flights/`
-- `POST /search_hotels/`
-- `POST /complete_search/`
-- `POST /generate_itinerary/`
-
-## APIs Used
-
-This project uses:
-
-- Groq API through CrewAI for AI recommendations and itinerary generation.
-- SerpAPI Google Flights and Google Hotels through `google-search-results` for travel data.
-
-## Where To Change API Keys
-
-Edit the `.env` file in the project root:
-
-```env
-GROQ_API_KEY=your_groq_api_key_here
-GROQ_MODEL=groq/llama-3.3-70b-versatile
-SERPAPI_API_KEY=your_serpapi_key_here
-CREWAI_TRACING_ENABLED=true
-DEMO_MODE=true
-```
-
-Your current `.env` uses `SERPER_API_KEY`; that still works. For SerpAPI, `SERPAPI_API_KEY` is the clearer name.
-
-`DEMO_MODE=true` means the app shows realistic sample flights and hotels when the live API returns no results or the API key is not working. Set `DEMO_MODE=false` when you want only live API data.
-
-## Free Or Free-Tier API Options
-
-Useful APIs for this project:
-
-- SerpAPI: Google Flights and Google Hotels data.
-- Groq: fast LLM responses for recommendations and itinerary text.
-- OpenWeatherMap: weather data for trip dates.
-- Geoapify: geocoding, places, and routes.
-- OpenTripMap: tourist attractions and places.
-- Amadeus for Developers: flight and hotel search test APIs.
-
-## How To Run
-
-Install dependencies:
-
-```powershell
-pip install -r requirements.txt
-```
-
-Start the backend:
-
-```powershell
-uvicorn backend.main:app --reload
-```
-
-Start the frontend in a second terminal:
-
-```powershell
-streamlit run frontend/app.py
-```
-
-## Deploy Backend On Render
-
-Create a Render Web Service from this repository. Render will use `render.yaml`,
-or configure these values manually:
-
-- Build command: `pip install -r requirements.txt`
-- Start command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
-- Health check path: `/health`
-
-Add the database, JWT, and API key environment variables listed in `render.yaml`.
-The frontend must use the Render service URL as its API base URL when hosted on a
-different domain.
+                    ┌─────────────────────┐
+                    │      User           │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │ Frontend            │
+                    │ HTML / CSS / JS     │
+                    └──────────┬──────────┘
+                               │
+                         REST API Requests
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │ FastAPI Backend     │
+                    │ Python              │
+                    └──────────┬──────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              │                │                │
+              ▼                ▼                ▼
+       ┌────────────┐   ┌────────────┐   ┌────────────┐
+       │ AI Service │   │ Search API │   │ Weather API│
+       └────────────┘   └────────────┘   └────────────┘
+              │
+              ▼
+       ┌────────────────┐
+       │ Travel Planning│
+       │ & Itinerary    │
+       └────────────────┘
+              │
+              ▼
+       ┌────────────────┐
+       │ Database       │
+       │ MySQL          │
+       └────────────────┘
