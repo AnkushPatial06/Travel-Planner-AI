@@ -7,7 +7,7 @@ const BACKEND_URL = (
   window.location.protocol === 'file:' ||
   window.location.hostname === 'localhost' ||
   window.location.hostname === '127.0.0.1'
-) ? 'http://127.0.0.1:8000' : '';
+) ? 'http://127.0.0.1:8000' : 'https://travel-planner-ai-buy7.onrender.com';
 
 // ── State ──────────────────────────────────────────────────
 let currentTripData = null;
